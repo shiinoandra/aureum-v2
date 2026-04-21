@@ -7,6 +7,7 @@ class State(Enum):
     MAIN_MENU="main_menu"
     RAID_LIST="raid_list"
     RAID_SUMMON_SELECT="raid_summon_select"
+    RAID_BATTLE="raid_battle"
     RAID_RESULT="raid_result"
     RAID_UNCLAIMED="raid_unclaimed"
     QUEST_SUMMON_SELECT="quest_summon_select"
