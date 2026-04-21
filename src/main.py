@@ -1,14 +1,13 @@
 import sys
 import os
-# Add src to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__))) 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import undetected_chromedriver as uc
 from selenium.webdriver.chrome.options import Options
 from navigator import Navigator
 from core_engine import CoreEngine
 from config_manager import ConfigManager
 from pathlib import Path
-
 def create_browser():
     """
     Create and configure undetected Chrome browser.
@@ -36,11 +35,12 @@ def create_browser():
     )
     
     return driver
-
-
 def main():
     """Main entry point."""
     print("[*] Starting Aureum automation...")
+    
+    # Get project root (parent of src/)
+    project_root = Path(__file__).parent.parent
     
     # Initialize browser
     print("[*] Initializing browser...")
@@ -55,7 +55,7 @@ def main():
     
     # Create config manager and load defaults
     config = ConfigManager()
-    config_path = Path(__file__).parent / "config" / "default.json"
+    config_path = project_root / "config" / "default.json"
     if config_path.exists():
         config.load_default_config(config_path)
         print(f"[*] Loaded config from {config_path}")
@@ -64,7 +64,7 @@ def main():
     engine = CoreEngine(navigator)
     
     # Start raid task
-    raid_task_path = Path(__file__).parent / "tasks" / "raid.json"
+    raid_task_path = project_root / "tasks" / "raid.json"
     if raid_task_path.exists():
         print(f"[*] Starting raid task from {raid_task_path}")
         engine.start_task(raid_task_path)
@@ -85,6 +85,5 @@ def main():
         engine.stop()
         driver.quit()
         print("[*] Done")
-        
 if __name__ == "__main__":
     main()
