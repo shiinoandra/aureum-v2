@@ -65,6 +65,7 @@ class TaskExecutor:
             action_func = ActionRegistry.get(name)
             if action_func:
                 result = action_func(params, self.context) or ActionContext.RESULT_SUCCESS
+                time.sleep(random.uniform(0.2,0.5))
             else:
                 print(f"[!] Action '{name}' not found")
                 break
@@ -102,11 +103,10 @@ class TaskExecutor:
             time.sleep(random.uniform(10, 20))
             return True
         elif popup_type == "three_raid":
-            print("[i] Three raids limit - cleaning queue")
+            print("[i] Three raids limit - waiting before refreshing")
             # Trigger clean_raid_queue action
-            clean_action = ActionRegistry.get("clean_raid_queue")
-            if clean_action:
-                clean_action({}, self.context)
+            time.sleep(random.uniform(5, 10))
+
             return True
         elif popup_type == "toomuch_pending":
             print("[i] Too many pending - cleaning queue")
