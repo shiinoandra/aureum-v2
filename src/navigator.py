@@ -177,8 +177,8 @@ class Navigator:
             new_x = rect["x"] + random.randint(-30, 30)
             new_y = min(screen_h, rect["y"] + rect["height"] + random.randint(80, 250))
     
-    # Use FAST move to get away quickly
-    self._fast_move((new_x, new_y))
+        # Use FAST move to get away quickly
+        self._fast_move((new_x, new_y))
 
     def scroll_element(self,element):
         # Option 2: Mouse wheel scroll (more human-like)
