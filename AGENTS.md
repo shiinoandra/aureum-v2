@@ -67,7 +67,7 @@ Browser automation project for automating Granblue Fantasy. Transformed from a s
    - config.until_finish=true loops until boss dies, OR
    - Boss dies early (battle ends automatically)
 6. Result screen     → Browser auto-shows when battle ends
-7. Back to step 1   → Repeat for next raid (via transitions)
+7. Back to step 1   → Repeat for next raid (via core_engine loop)
 ```
 
 ### do_battle Flow Detail
@@ -90,6 +90,7 @@ Defines "what to do" using finite state machine with transitions.
 - Example: `{"success": "select_summon", "failed": "refresh_raid_list"}`
 - Actions return `RESULT_SUCCESS` or `RESULT_FAILED`
 - `exit_condition` is task-level (how many raids to complete)
+- **execute_task runs ONE raid cycle, then returns**
 
 ### State Machine Layer
 Defines "where am I" - used for recovery when errors occur.
@@ -118,7 +119,7 @@ States correspond to URL paths:
 
 Tasks are defined in JSON files with FSM-based transitions.
 
-### raid.json Example (Current)
+### raid.json Example
 ```json
 {
   "task_type": "raid",
@@ -228,7 +229,7 @@ def action_function(params, context: ActionContext):
 | `select_raid` | Browse raid list, filter by HP%, select raid | success→select_summon, failed→refresh_raid_list |
 | `select_summon` | Auto-detect preset summon | success→join_battle, failed→select_raid |
 | `join_battle` | Click quest start button | success→do_battle, failed→select_raid |
-| `do_battle` | Full auto loop, increments `raids_completed` | success→select_raid, failed→select_raid |
+| `do_battle` | Full auto loop, increments `raids_completed` | success/failed (follows transitions) |
 | `refresh_raid_list` | Click refresh button | success→select_raid, failed→refresh_raid_list |
 | `clean_raid_queue` | Process pending unclaimed raids | success/failed |
 | `go_to_raid_list` | Navigate to `#quest/assist` | success |
@@ -237,24 +238,56 @@ def action_function(params, context: ActionContext):
 ## Task Executor (FSM-based)
 
 Task executor reads task JSON and executes actions based on transitions:
+
 1. Start from first action in list
 2. Execute action, get result
 3. Look up transition for that result
 4. Jump to next action (can loop back)
-5. Repeat until no transitions or max iterations
+5. **When last action in list returns RESULT_SUCCESS, exit and return True**
+6. Caller (core_engine) checks exit condition
 
 ```python
-def execute_task(self, task: dict):
+def execute_task(self, task: dict) -> bool:
+    """
+    Execute ONE raid cycle.
+    
+    Returns:
+        True - task cycle completed successfully
+        False - stopped early (error/captcha)
+    """
     actions = task.get("actions", [])
     action_map = {a["name"]: a for a in actions}
     current_name = actions[0]["name"]
 
     while current_name and self._running:
-        action_def = action_map.get(current_name)
-        result = action_func(params, context)  # returns success/failed
+        # Check popup, execute action, get result...
+        
+        # If last action AND result is SUCCESS, exit loop
+        if action_def == actions[-1] and result == ActionContext.RESULT_SUCCESS:
+            return True
+        
+        # Otherwise, follow transitions to next action
+        ...
+```
 
-        transitions = action_def.get("transitions", {})
-        current_name = transitions.get(result)  # jump to next action
+## Core Engine
+
+The `CoreEngine` orchestrates:
+- `start()`: Runs main loop monitoring state
+- `start_task(task_path)`: Loads and runs task in background thread
+- `_run_task_loop()`: Repeatedly calls execute_task until exit condition met
+- `_main_loop()`: Detects state from URL, handles recovery
+- `_handle_recovery()`: Recovery logic based on detected state
+
+### Task Loop Flow
+```
+while running and task:
+    execute_task()      # Runs ONE raid cycle, returns True/False
+    if not result:     # Error/captcha
+        break
+    if check_exit_condition():  # raids_completed >= target?
+        break
+    # Continue to next raid
 ```
 
 ## Popup Handling
@@ -270,8 +303,8 @@ Popups are handled centrally by `task_executor.execute_task()` between actions.
 | "captcha" | Stop automation |
 | "raid_full" | Refresh raid list |
 | "not_enough_ap" | Wait and retry |
-| "three_raid" | Clean raid queue |
-| "toomuch_pending" | Clean pending raids |
+| "three_raid" | Wait before refreshing |
+| "toomuch_pending" | Clean raid queue |
 | "ended" | Skip to next raid |
 
 ## Navigator
@@ -291,19 +324,11 @@ Browser automation module handling Selenium + PyAutoGUI.
 
 ### Click Element Behavior
 1. `scrollIntoView({block: 'nearest', inline: 'nearest'})` - bring element into view
-2. Random scroll offset `(-20 to +20)` - humans rarely stop perfectly aligned
-3. Calculate element center with sigma-based offset (10% of element size)
-4. Move mouse using bezier curve (or fast linear for `fast=True`)
-5. Click
-
-## Core Engine
-
-The `CoreEngine` orchestrates:
-- `start()`: Runs main loop monitoring state
-- `start_task(task_path)`: Loads and runs task in background thread
-- `_run_task_loop()`: Repeatedly executes task until exit condition
-- `_main_loop()`: Detects state from URL, handles recovery
-- `_handle_recovery()`: Recovery logic based on detected state
+2. Random scroll offset `(-3 to +3)` - humans rarely stop perfectly aligned
+3. Small pause as if to locate element
+4. Calculate element center with sigma-based offset (10% of element size)
+5. Move mouse using bezier curve (or fast linear for `fast=True`)
+6. Click
 
 ## Flask UI
 

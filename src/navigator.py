@@ -34,7 +34,7 @@ class Navigator:
         try:
             # First, just ensure the element is in the viewport. 'nearest' is less robotic.
             self.driver.execute_script(
-                "arguments[0].scrollIntoView({block: 'nearest', inline: 'nearest'});", element
+                "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});", element
             )
             time.sleep(random.uniform(0.1, 0.2)) # Pause as if to locate the element
 
@@ -161,8 +161,8 @@ class Navigator:
             """
             var rect = arguments[0].getBoundingClientRect();
             return {
-                x: rect.x + window.pageXOffset,
-                y: rect.y + window.pageYOffset,
+                x: rect.x,
+                y: rect.y,
                 width: rect.width,
                 height: rect.height
             };
