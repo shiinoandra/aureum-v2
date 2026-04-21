@@ -245,15 +245,14 @@ def action_do_battle(params, context: ActionContext):
         if not battle_ended:
             print("inside method D if")
             try:
-                ended_popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop.usual.pop.rematch")
-                popup_text = ended_popup.text
-                if "battle has ended" in popup_text.lower():
-                    print("[→] Battle ended - detected 'battle has ended' popup")
-                    battle_ended = True
-                    try:
-                        click_target = ended_popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
-                    except NoSuchElementException:
-                        pass
+                ended_popup = nav.driver.find_element(By.CSS_SELECTOR, "pop.rematch")
+                print("[→] Battle ended - detected 'battle has ended' popup")
+                battle_ended = True
+                try:
+                    click_target = ended_popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
+                    nav.click_element(click_target)
+                except NoSuchElementException:
+                    pass
             except NoSuchElementException:
                 pass
         
