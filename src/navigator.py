@@ -34,11 +34,18 @@ class Navigator:
             "return window.outerHeight - window.innerHeight;"
         )
         
-        # Scroll element into view
+        # Scroll element into view first
         self.driver.execute_script(
-            "arguments[0].scrollIntoView({block: 'nearest', inline: 'nearest'});", 
+            "arguments[0].scrollIntoView({block: 'nearest', inline: 'nearest'});",
             element
         )
+        
+        # Add small random scroll adjustment - humans rarely stop perfectly aligned
+        scroll_offset = random.randint(-20, 20)
+        self.driver.execute_script(f"window.scrollBy(0, {scroll_offset});")
+        
+        # Small pause as if to locate element
+        time.sleep(random.uniform(0.05, 0.1))
         
         # Get element center
         rect = self.get_element_rect(element)

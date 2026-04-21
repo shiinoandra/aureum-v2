@@ -37,10 +37,10 @@ Browser automation project for automating Granblue Fantasy. Transformed from a s
         ▼                                   ▼
 ┌───────────────────────┐     ┌───────────────────────────────┐
 │     Task Executor      │     │      State Machine            │
-│  (orchestrates flow)  │     │   (recovery & detection)      │
-│  - task definition    │     │   - detect state from URL     │
-│  - action registry    │     │   - recovery handlers         │
-│  - exit conditions    │     │   - state transitions         │
+│  (FSM-based flow)    │     │   (recovery & detection)      │
+│  - task definition    │     │   - detect state from URL    │
+│  - action registry    │     │   - recovery handlers        │
+│  - transitions       │     │   - state transitions        │
 └───────────┬───────────┘     └───────────────────────────────┘
             │
             ▼
@@ -58,24 +58,38 @@ Browser automation project for automating Granblue Fantasy. Transformed from a s
 ## Battle Flow (Raid)
 
 ```
-1. select_raid      → Navigate to raid list, browse, filter by HP%, select raid
-2. select_summon    → On summon screen, click OK (auto-preset configured in-game)
-3. join_battle      → Click start button to enter battle
-4. do_battle        → Loop until conditions met:
+1. refresh_raid_list → Refresh raid list to get latest raids
+2. select_raid       → Browse list, filter by HP%, select raid
+3. select_summon     → On summon screen, click OK (auto-preset)
+4. join_battle       → Click start button to enter battle
+5. do_battle         → Loop until conditions met:
    - config.turn turns reached, OR
    - config.until_finish=true loops until boss dies, OR
    - Boss dies early (battle ends automatically)
-5. Result screen    → Browser auto-shows when battle ends
-6. Back to step 1   → Repeat for next raid
+6. Result screen     → Browser auto-shows when battle ends
+7. Back to step 1   → Repeat for next raid (via transitions)
 ```
+
+### do_battle Flow Detail
+
+Each turn in battle:
+1. Click full auto button
+2. Wait for attack button to appear (display-on)
+3. Check if attack button is `display-off` (turn processing)
+4. If `display-off`: turn completed
+   - If `refresh=true`: refresh browser immediately, fullauto_clicked=0, next turn
+   - If `refresh=false`: wait for attack button to reappear, fullauto_clicked=1, next turn
+5. Click attack button (triggers full auto action sequence)
+6. Loop until turn limit or boss dies
 
 ## Two-Layer System
 
-### Task Layer
-Defines "what to do" - the sequence of actions to complete a task.
-- Example: Raid task = select_raid → select_summon → join_battle → do_battle
-- **exit_condition** is task-level (how many raids to complete)
-- Task repeats actions 1-4 until exit_condition is met
+### Task Layer (FSM-based)
+Defines "what to do" using finite state machine with transitions.
+- Actions have `transitions` dict mapping result → next action
+- Example: `{"success": "select_summon", "failed": "refresh_raid_list"}`
+- Actions return `RESULT_SUCCESS` or `RESULT_FAILED`
+- `exit_condition` is task-level (how many raids to complete)
 
 ### State Machine Layer
 Defines "where am I" - used for recovery when errors occur.
@@ -102,33 +116,55 @@ States correspond to URL paths:
 
 ## Task Definition
 
-Tasks are defined in JSON files in `/tasks/` directory.
+Tasks are defined in JSON files with FSM-based transitions.
 
-### raid.json Example
+### raid.json Example (Current)
 ```json
 {
   "task_type": "raid",
   "actions": [
-    {"name": "select_raid", "params": {"filter": "prefer_Lv100"}},
-    {"name": "select_summon", "params": {}},
-    {"name": "join_battle", "params": {}},
-    {"name": "do_battle", "params": {"mode": "full_auto"}}
+    {
+      "name": "refresh_raid_list",
+      "params": {},
+      "transitions": {
+        "success": "select_raid",
+        "failed": "refresh_raid_list"
+      }
+    },
+    {
+      "name": "select_raid",
+      "params": {"filter": "prefer_Lv100"},
+      "transitions": {
+        "success": "select_summon",
+        "failed": "refresh_raid_list"
+      }
+    },
+    {
+      "name": "select_summon",
+      "params": {},
+      "transitions": {
+        "success": "join_battle",
+        "failed": "select_raid"
+      }
+    },
+    {
+      "name": "join_battle",
+      "params": {},
+      "transitions": {
+        "success": "do_battle",
+        "failed": "select_raid"
+      }
+    },
+    {
+      "name": "do_battle",
+      "params": {"mode": "full_auto"},
+      "transitions": {
+        "success": "select_raid",
+        "failed": "select_raid"
+      }
+    }
   ],
   "exit_condition": {"type": "raid_count", "value": 10}
-}
-```
-
-### quest.json Example
-```json
-{
-  "task_type": "quest",
-  "actions": [
-    {"name": "select_quest", "params": {"quest_id": "story_1"}},
-    {"name": "select_summon", "params": {}},
-    {"name": "join_battle", "params": {}},
-    {"name": "do_battle", "params": {"mode": "full_auto"}}
-  ],
-  "exit_condition": {"type": "until_finish", "value": true}
 }
 ```
 
@@ -150,7 +186,7 @@ Used inside `do_battle` action, read from `config/default.json`:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `turn` | int | 1 | Max turns per single battle |
-| `refresh` | bool | true | Refresh browser to skip animation |
+| `refresh` | bool | true | Refresh browser after each turn |
 | `until_finish` | bool | false | Loop until boss dies (ignore turn limit) |
 | `trigger_skip` | bool | false | Skip boss entrance animation |
 | `think_time_min` | float | 0.2 | Min delay between actions |
@@ -163,44 +199,63 @@ Passed to all actions, contains:
 - `config`: ConfigManager instance for reading params
 - `current_turn`: Internal turn counter (ONLY for do_battle, reset each battle)
 - `battle_finished`: Flag set when battle ends
-- `raids_completed`: Counter incremented when ONE raid completes (task-level, NOT reset between raids)
+- `raids_completed`: Counter incremented when ONE raid completes (task-level)
+- `last_result`: Last action result (success/failed)
 
+### Result Constants
 ```python
 class ActionContext:
-    def __init__(self, navigator, config_manager):
-        self.navigator = navigator
-        self.config = config_manager
-        self.current_turn = 0
-        self.battle_finished = False
-        self.raids_completed = 0
-    
-    def reset(self):
-        """Reset for next raid cycle"""
-        self.current_turn = 0
-        self.battle_finished = False
-        # raids_completed NOT reset - it's task-level
+    RESULT_SUCCESS = "success"
+    RESULT_FAILED = "failed"
+    RESULT_SKIP = "skip"
 ```
 
 ## Action Registry
 
-Actions registered via decorator:
+Actions registered via decorator and return results:
+
 ```python
 @ActionRegistry.register("action_name")
 def action_function(params, context: ActionContext):
-    pass
+    # Do work...
+    return ActionContext.RESULT_SUCCESS  # or RESULT_FAILED
 ```
 
-Available actions in `src/actions.py`:
-| Action | Description |
-|--------|-------------|
-| `select_raid` | Browse raid list, filter by HP%, select raid |
-| `select_summon` | Auto-detect preset summon |
-| `join_battle` | Click quest start button |
-| `do_battle` | Full auto loop, increments `raids_completed` |
-| `refresh_raid_list` | Click refresh button |
-| `clean_raid_queue` | Process pending unclaimed raids |
-| `go_to_raid_list` | Navigate to `#quest/assist` |
-| `go_to_main_menu` | Navigate to `#mypage/` |
+### Available Actions
+
+| Action | Description | Transitions |
+|--------|-------------|-------------|
+| `select_raid` | Browse raid list, filter by HP%, select raid | success→select_summon, failed→refresh_raid_list |
+| `select_summon` | Auto-detect preset summon | success→join_battle, failed→select_raid |
+| `join_battle` | Click quest start button | success→do_battle, failed→select_raid |
+| `do_battle` | Full auto loop, increments `raids_completed` | success→select_raid, failed→select_raid |
+| `refresh_raid_list` | Click refresh button | success→select_raid, failed→refresh_raid_list |
+| `clean_raid_queue` | Process pending unclaimed raids | success/failed |
+| `go_to_raid_list` | Navigate to `#quest/assist` | success |
+| `go_to_main_menu` | Navigate to `#mypage/` | success |
+
+## Task Executor (FSM-based)
+
+Task executor reads task JSON and executes actions based on transitions:
+1. Start from first action in list
+2. Execute action, get result
+3. Look up transition for that result
+4. Jump to next action (can loop back)
+5. Repeat until no transitions or max iterations
+
+```python
+def execute_task(self, task: dict):
+    actions = task.get("actions", [])
+    action_map = {a["name"]: a for a in actions}
+    current_name = actions[0]["name"]
+
+    while current_name and self._running:
+        action_def = action_map.get(current_name)
+        result = action_func(params, context)  # returns success/failed
+
+        transitions = action_def.get("transitions", {})
+        current_name = transitions.get(result)  # jump to next action
+```
 
 ## Popup Handling
 
@@ -219,19 +274,13 @@ Popups are handled centrally by `task_executor.execute_task()` between actions.
 | "toomuch_pending" | Clean pending raids |
 | "ended" | Skip to next raid |
 
-## Recovery System
-
-Recovery is triggered when `ERROR_RECOVERY` state is detected:
-1. Detect actual state from current URL
-2. Based on state, decide recovery action
-
 ## Navigator
 
 Browser automation module handling Selenium + PyAutoGUI.
 
 ### Key Methods
 - `get_current_url()`: Returns current browser URL
-- `click_element(element, fast=False)`: Human-like click using bezier curves
+- `click_element(element, fast=False)`: Human-like click using bezier curves with scrollIntoView
 - `_human_move(end_pos)`: Bezier curve mouse movement
 - `_fast_move(end_pos)`: Linear mouse movement
 - `get_element_rect(element)`: Get element position/size
@@ -239,6 +288,13 @@ Browser automation module handling Selenium + PyAutoGUI.
 - `wait(min_time, max_time)`: Random human-like delays
 - `wait_for_element(by, selector, timeout)`: Wait for element
 - `wait_for_clickable(by, selector, timeout)`: Wait for clickable element
+
+### Click Element Behavior
+1. `scrollIntoView({block: 'nearest', inline: 'nearest'})` - bring element into view
+2. Random scroll offset `(-20 to +20)` - humans rarely stop perfectly aligned
+3. Calculate element center with sigma-based offset (10% of element size)
+4. Move mouse using bezier curve (or fast linear for `fast=True`)
+5. Click
 
 ## Core Engine
 
@@ -270,17 +326,18 @@ HTTP endpoints for UI↔core communication:
 ├── hihihori3.py           # Original reference script
 ├── requirements.txt       # Python dependencies
 ├── tasks/
-│   ├── raid.json          # Raid task definition
+│   ├── raid.json          # Raid task definition (FSM-based)
 │   └── quest.json         # Quest task definition
 ├── config/
 │   └── default.json       # Global default parameters
 ├── src/
 │   ├── __init__.py
 │   ├── config_manager.py # Thread-safe config & state
+│   ├── context.py        # ActionContext & ActionRegistry
 │   ├── core_engine.py    # Battle orchestration
 │   ├── navigator.py      # Browser automation
 │   ├── state_machine.py  # State detection
-│   ├── task_executor.py  # Task execution + action registry
+│   ├── task_executor.py  # FSM-based task execution
 │   └── actions.py        # All registered actions
 └── ui/
     ├── app.py            # Flask web interface
@@ -290,7 +347,7 @@ HTTP endpoints for UI↔core communication:
 ## Original Script Reference (hihihori3.py)
 
 The `hihihori3.py` contains reference implementations:
-- **NavigationHelper**: Click with bezier curves, element positioning
+- **NavigationHelper**: Click with bezier curves, scrollIntoView adjustment
 - **BattleHelper**: Summon selection, battle joining, full auto battle
 - **RaidHelper**: Raid picking (HP filter), popup handling, raid cleanup
 - **gwHelper**: Guild war battle with popup handling
