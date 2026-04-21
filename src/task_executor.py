@@ -71,7 +71,7 @@ class TaskExecutor:
                 time.sleep(random.uniform(0.2,0.5))
             else:
                 print(f"[!] Action '{name}' not found")
-                break
+                return "stopped"
             
             self.context.last_result = result
             
@@ -87,7 +87,7 @@ class TaskExecutor:
                     break
         
         self.context.last_result = None
-        return True
+        return "completed"
         
     def _handle_popup_recovery(self, popup_type: str) -> bool:
         """
@@ -97,7 +97,7 @@ class TaskExecutor:
         if popup_type == "captcha":
             print("[!!!] CAPTCHA detected - stopping automation")
             self._running = False
-            return False
+            return "stopped"
         elif popup_type == "raid_full":
             print("[i] Raid full - will refresh and retry")
             return True

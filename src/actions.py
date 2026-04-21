@@ -89,7 +89,6 @@ def action_select_raid(params, context: ActionContext):
     # Check for popups
     # Human-like browsing scroll
     _perform_browse_scrolling(nav)
-    print("perform scrolling")
 
     # Find all visible raid rooms
     raid_rooms = nav.driver.find_elements(
@@ -201,8 +200,6 @@ def action_do_battle(params, context: ActionContext):
         except:
             pass
         
-        print("current turn: "+str(current_turn))
-        print("config turn: "+str(battle_config.turn))
 
         
         # If until_finish is set, loop forever until boss dies
@@ -308,13 +305,16 @@ def action_clean_raid_queue(params, context: ActionContext):
 
             # Go back to unclaimed list
             nav.driver.back()
-            nav.wait_for_element(By.CSS_SELECTOR, "#prt-unclaimed-list .btn-multi-raid.lis-raid", timeout=10)
+            nav.wait_for_element(By.CSS_SELECTOR, "#prt-unclaimed-list .btn-multi-raid.lis-raid", timeout=2)
 
         print("[✓] Raid queue cleaned")
+        nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
         return ActionContext.RESULT_SUCCESS
+        
 
     except TimeoutException:
         print("[i] No pending battles button found")
+        nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
         return ActionContext.RESULT_SUCCESS
 
     except Exception as e:

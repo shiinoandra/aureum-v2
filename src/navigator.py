@@ -30,19 +30,21 @@ class Navigator:
     def click_element(self,element,fast:bool=False):
         win_position = self.driver.get_window_rect()
         offset_x = win_position['x']
-        offset_y = win_position['y'] + self.driver.execute_script(
-            "return window.outerHeight - window.innerHeight;"
-        )
-        
-        # Scroll element into view first
-        self.driver.execute_script(
-            "arguments[0].scrollIntoView({block: 'nearest', inline: 'nearest'});",
-            element
-        )
-        
-        # Add small random scroll adjustment - humans rarely stop perfectly aligned
-        scroll_offset = random.randint(-20, 20)
-        self.driver.execute_script(f"window.scrollBy(0, {scroll_offset});")
+        offset_y = win_position['y'] + self.driver.execute_script("return window.outerHeight - window.innerHeight;")
+        try:
+            # First, just ensure the element is in the viewport. 'nearest' is less robotic.
+            self.driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'nearest', inline: 'nearest'});", element
+            )
+            # time.sleep(random.uniform(0.1, 0.2)) # Pause as if to locate the element
+
+            # Add a small, random "adjustment" scroll. Humans rarely stop perfectly.
+            scroll_offset = random.randint(-20, 20)
+            self.driver.execute_script(f"window.scrollBy(0, {scroll_offset});")
+            # time.sleep(random.uniform(0.1, 0.2)) # A final pause before moving the mouse
+
+        except Exception as e:
+            print(f"[!] scrollIntoView failed: {e}")
         
         # Small pause as if to locate element
         time.sleep(random.uniform(0.05, 0.1))

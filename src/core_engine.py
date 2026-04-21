@@ -64,15 +64,18 @@ class CoreEngine:
                 result = self.task_executor.execute_task(self._current_task)
                 print(f"[*] Execute result: {result}")
                 
-                if not result:
-                    print("[!] Execute returned False")
+                if result=="stopped":
+                    print("[!] Task Stopped")
                     break
                 
-                exit_met = self.task_executor.check_exit_condition(self._current_task)
-                print(f"[*] Exit condition met: {exit_met}")
-                
-                if exit_met:
+            # Check exit condition AFTER each raid cycle completes
+                print("one raid complete")
+                print("no. of raid completed:"+str(self.task_executor.context.raids_completed))
+                if self.task_executor.check_exit_condition(self._current_task):
+                    print(f"[✓] Exit condition met. Completed {self.task_executor.context.raids_completed} raids.")
                     break
+                
+            # Task not complete, continue to next raid
             except Exception as e:
                 print(f"[!] Exception in task: {e}")
                 import traceback
