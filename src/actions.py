@@ -82,15 +82,13 @@ def action_select_raid(params, context: ActionContext):
     nav = context.navigator
 
     # Navigate to raid list if not already there
-    if "#quest/assist" not in nav.get_current_url():
+    if "https://game.granbluefantasy.jp/#quest/assist" not in nav.get_current_url():
         nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
         nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
 
     # Check for popups
-    _check_and_handle_popup(nav)
-
     # Human-like browsing scroll
-    #_perform_browse_scrolling(nav)
+    _perform_browse_scrolling(nav)
     print("perform scrolling")
 
     # Find all visible raid rooms
@@ -220,6 +218,7 @@ def action_do_battle(params, context: ActionContext):
                 nav.click_element(fullauto_btn)
                 print("[⚙] Full Auto clicked")
                 nav.wait(0.2, 0.4)
+                time.sleep(random.uniform(battle_config.think_time_min,battle_config.think_time_max))
                 try:
                     atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=30)
                     class_attr = atk_btn.get_attribute("class")
@@ -230,6 +229,7 @@ def action_do_battle(params, context: ActionContext):
                         print(f"[i] Turn {current_turn} completed")
                         current_turn += 1
                         fullauto_clicked = 0
+                        time.sleep(random.uniform(battle_config.think_time_min,battle_config.think_time_max))
                         nav.driver.refresh()
                             
                 except TimeoutException:
@@ -240,7 +240,6 @@ def action_do_battle(params, context: ActionContext):
                 else:
                     fullauto_clicked = 1
             except TimeoutException:
-                print("[!] Full Auto not found")
                 return ActionContext.RESULT_SUCCESS
 
 
@@ -253,7 +252,7 @@ def action_refresh_raid_list(params, context: ActionContext):
     nav = context.navigator
     print("refreshing raid list")
 
-    if "#quest/assist" not in nav.get_current_url():
+    if "https://game.granbluefantasy.jp/#quest/assist" not in nav.get_current_url():
         nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
         nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
 
@@ -277,7 +276,7 @@ def action_clean_raid_queue(params, context: ActionContext):
     nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
 
     try:
-        pending_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-unconfirmed-result", timeout=3)
+        pending_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-unconfirmed-result", timeout=2)
         nav.click_element(pending_btn)
         nav.wait_for_element(By.ID, "prt-unclaimed-list", timeout=5)
 
@@ -300,7 +299,9 @@ def action_clean_raid_queue(params, context: ActionContext):
             # Claim its rewards
             try:
                 ok_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-usual-ok", timeout=2)
-                nav.click_element(ok_btn)
+                time.sleep(random.uniform(0.3,0.5))
+                if(random.uniform(0,1)>0.5):
+                    nav.click_element(ok_btn)
                 nav.wait(0.5)
             except:
                 pass

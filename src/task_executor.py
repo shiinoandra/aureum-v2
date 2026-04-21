@@ -61,6 +61,9 @@ class TaskExecutor:
             params = action_def.get("params", {})
             transitions = action_def.get("transitions", {})
             
+            if self.context.last_result==ActionContext.RESULT_FAILED:
+                time.sleep(random.uniform(3,5))
+
             # Execute action
             action_func = ActionRegistry.get(name)
             if action_func:
@@ -104,7 +107,6 @@ class TaskExecutor:
             return True
         elif popup_type == "three_raid":
             print("[i] Three raids limit - waiting before refreshing")
-            # Trigger clean_raid_queue action
             time.sleep(random.uniform(5, 10))
 
             return True
