@@ -129,12 +129,16 @@ def action_select_raid(params, context: ActionContext):
 def action_select_summon(params, context: ActionContext):
     """
     Select summon from supporter selection screen.
-
-    Params:
-        - filter: "element_fire", "element_earth", etc. (optional, for future use)
+    Priority order:
+    1. Check for auto-summon preset (GBF internal system)
+    2. Try each summon in config.summon_priority (first → last)
+       - Supports optional 'level' (exact match if provided, any level if omitted/null)
+    3. Fallback: select first summon in type0 tab
     """
     nav = context.navigator
-
+    config = context.config.get_battle_config()
+    summon_list = config.summon_priority
+    # Step 1: Check auto-summon preset
     try:
         WebDriverWait(nav.driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-usual-ok"))
@@ -142,14 +146,56 @@ def action_select_summon(params, context: ActionContext):
         print("[i] Auto Summon Setting Found - using preset")
         return ActionContext.RESULT_SUCCESS
     except TimeoutException:
-        pass
-        
-    return ActionContext.RESULT_FAILED
-
-
-    # TODO: Implement element-based summon selection if needed
-    # For now, assume auto-summon preset is configured in-game
-
+        print("[i] Auto Summon not available - searching preferred summons...")
+    # Step 2: Try each preferred summon in priority order
+    for summon in summon_list:
+        name = summon.get("name")
+        level = summon.get("level")
+        if not name:
+            continue
+        print(f"[i] Searching for summon: {name}" + (f" ({level})" if level else " (any level)"))
+        try:
+            # Build XPath based on whether level is specified
+            if level:
+                xpath = f"""
+                //div[contains(@class, 'supporter-summon') and
+                    .//span[@class='txt-summon-level' and normalize-space(text())='{level}'] and
+                    .//span[@class='js-summon-name' and normalize-space(text())='{name}']]
+                """
+            else:
+                xpath = f"""
+                //div[contains(@class, 'supporter-summon') and
+                    .//span[@class='js-summon-name' and normalize-space(text())='{name}']]
+                """
+            support_elems = nav.driver.find_elements(By.XPATH, xpath)
+            if support_elems:
+                tab_btn = _find_support_tab_from_elem(nav, support_elems[0])
+                if tab_btn:
+                    nav.click_element(tab_btn)
+                    nav.wait(0.3, 0.5)
+                nav.click_element(support_elems[0])
+                print(f"[✓] Selected preferred summon: {name}")
+                return ActionContext.RESULT_SUCCESS
+        except Exception as e:
+            print(f"[!] Error selecting {name}: {e}")
+            continue
+    # Step 3: Fallback - select first summon in type0 tab
+    print("[!] No preferred summons found — using first available summon.")
+    try:
+        fallback_tab = nav.driver.find_element(By.CSS_SELECTOR, ".icon-supporter-type-7")
+        nav.click_element(fallback_tab)
+        nav.wait(0.3, 0.5)
+        first_summon = WebDriverWait(nav.driver, 2).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".prt-supporter-attribute.type0 .btn-supporter")
+            )
+        )
+        nav.click_element(first_summon)
+        print("[→] Selected first available summon")
+        return ActionContext.RESULT_SUCCESS
+    except Exception as e:
+        print(f"[!!] Fallback summon selection failed: {e}")
+        return ActionContext.RESULT_FAILED
 
 @ActionRegistry.register("join_battle")
 def action_join_battle(params, context: ActionContext):
@@ -454,3 +500,30 @@ def _perform_browse_scrolling(nav: Navigator):
         actions.scroll_by_amount(0, -random.randint(300, 800)).perform()
         time.sleep(random.uniform(0.4, 1.0))
     return ActionContext.RESULT_SUCCESS
+    
+def _find_support_tab_from_elem(nav: Navigator, support_elem):
+    """
+    Given a supporter summon element, find its corresponding tab button.
+    Returns the tab element, or None if not found.
+    """
+    try:
+        container = support_elem.find_element(
+            By.XPATH, "./ancestor::div[contains(@class, 'prt-supporter-attribute')]"
+        )
+        class_attr = container.get_attribute("class")
+        match = re.search(r"type(\d+)", class_attr)
+        if not match:
+            print(f"[!] Could not detect type class from: {class_attr}")
+            return None
+        support_type = int(match.group(1))
+        type_map = {0: 7, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
+        tab_index = type_map.get(support_type)
+        if tab_index is None:
+            print(f"[!] No matching tab for type {support_type}")
+            return None
+        print(f"[i] Support type{support_type} → tab button type-{tab_index}")
+        tab_selector = f".icon-supporter-type-{tab_index}"
+        return nav.driver.find_element(By.CSS_SELECTOR, tab_selector)
+    except Exception as e:
+        print(f"[!] Error finding support tab: {e}")
+        return None

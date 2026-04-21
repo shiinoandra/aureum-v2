@@ -1,10 +1,9 @@
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Lock
-from typing import Any,Optional
+from typing import Any, Optional, List
 import json
 from pathlib import Path
-
 from state_machine import State
 
 @dataclass
@@ -12,14 +11,16 @@ class BattleConfig:
     turn: int = 1
     refresh: bool = True
     until_finish: bool = False
-    trigger_skip : bool = False
-    think_time_min: int = 0.2
-    think_time_max: int = 0.5
-    pre_fa:bool = False
+    trigger_skip: bool = False
+    think_time_min: float = 0.2
+    think_time_max: float = 0.5
+    pre_fa: bool = False
+    summon_priority: List[dict] = field(default_factory=list)
+
 
 
 class ConfigManager:
-    _instance:Optional['ConfigManager'] = None
+    _instance: Optional['ConfigManager'] = None
     _lock = Lock()
 
     def __new__(cls):
@@ -29,27 +30,24 @@ class ConfigManager:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
-
     def __init__(self):
         if self._initialized:
             return
         self._state_lock = Lock()
         self._config_lock = Lock()
-        self._current_state= State.IDLE
+        self._current_state = State.IDLE
         self._battle_config = BattleConfig()
-        self._initialized = True 
+        self._initialized = True
 
     @property
     def current_state(self) -> State:
         with self._state_lock:
             return self._current_state
-    
     @current_state.setter
-    def current_state(self,state:State):
+    def current_state(self, state: State):
         with self._state_lock:
-            self._current_state=state
-    
-    def get_battle_config(self)->BattleConfig:
+            self._current_state = state
+    def get_battle_config(self) -> BattleConfig:
         with self._config_lock:
             return BattleConfig(
                 turn=self._battle_config.turn,
@@ -58,16 +56,15 @@ class ConfigManager:
                 trigger_skip=self._battle_config.trigger_skip,
                 think_time_min=self._battle_config.think_time_min,
                 think_time_max=self._battle_config.think_time_max,
-                pre_fa = self._battle_config.pre_fa
+                pre_fa=self._battle_config.pre_fa,
+                summon_priority=list(self._battle_config.summon_priority)
             )
-    def update_battle_config(self,**kwargs):
+    def update_battle_config(self, **kwargs):
         with self._config_lock:
-            for key,value in kwargs.items():
-                if hasattr(self._battle_config,key):
-                    setattr(self._battle_config,key,value)
-    
-    def load_default_config(self,config_path:Path):
+            for key, value in kwargs.items():
+                if hasattr(self._battle_config, key):
+                    setattr(self._battle_config, key, value)
+    def load_default_config(self, config_path: Path):
         with open(config_path) as f:
             data = json.load(f)
         self.update_battle_config(**data)
-

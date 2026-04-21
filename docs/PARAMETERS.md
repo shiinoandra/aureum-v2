@@ -48,6 +48,36 @@ This document describes the configurable parameters used in the automation scrip
 - **Used for**: All actions
 - **Description**: Maximum delay between actions to mimic human behavior. Actual delay is random between min and max
 
+### `summon_priority` (array of objects)
+- **Default**: `[]`
+- **Used for**: Both quest and raid
+- **Description**: Priority-ordered list of preferred support summons. Checked from first to last. If none are found, falls back to the first available summon in the type0 tab.
+  Each object supports:
+  - `name` (string, required): Exact summon name
+  - `level` (string, optional): Exact level text (e.g., `"Lvl 100"`). If omitted or `null`, any level of that summon matches.
+  Example:
+  ```json
+  "summon_priority": [
+    {"name": "Huanglong", "level": "Lvl 100"},
+    {"name": "Kaguya", "level": "Lvl 100"},
+    {"name": "Shiva"}
+  ]
+---
+## How Level-less Matching Works
+```python
+if level:
+    # Strict: both name AND level must match
+    xpath = f"""
+    //div[contains(@class, 'supporter-summon') and
+        .//span[@class='txt-summon-level' and normalize-space(text())='{level}'] and
+        .//span[@class='js-summon-name' and normalize-space(text())='{name}']]
+    """
+else:
+    # Loose: name only
+    xpath = f"""
+    //div[contains(@class, 'supporter-summon') and
+        .//span[@class='js-summon-name' and normalize-space(text())='{name}']]
+    """
 ## Future Expansion
 
 These parameters are for the built-in full auto battle. Future versions will support custom battle scripts with per-battle JSON configuration.

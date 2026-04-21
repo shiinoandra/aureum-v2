@@ -4,5 +4,10 @@
   "until_finish": false,
   "trigger_skip": false,
   "think_time_min": 0.2,
-  "think_time_max": 0.5
+  "think_time_max": 0.5,
+  "summon_priority": [
+    {"name": "Grand Order", "level": "Lvl 200"},
+    {"name": "Huanglong", "level": "Lvl 100"},
+    {"name": "Kaguya", "level": "Lvl 150"}
+  ]
 }
