@@ -8,6 +8,7 @@ Actions receive params (from JSON) and context (ActionContext).
 import random
 import time
 from typing import Optional
+import re
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -140,7 +141,7 @@ def action_select_summon(params, context: ActionContext):
     summon_list = config.summon_priority
     # Step 1: Check auto-summon preset
     try:
-        WebDriverWait(nav.driver, 10).until(
+        WebDriverWait(nav.driver, 2).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-usual-ok"))
         )
         print("[i] Auto Summon Setting Found - using preset")
