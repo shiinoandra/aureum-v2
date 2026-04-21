@@ -1,13 +1,14 @@
 import sys
 import os
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import undetected_chromedriver as uc
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.options  import Options
 from navigator import Navigator
 from core_engine import CoreEngine
 from config_manager import ConfigManager
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 def create_browser():
     """
     Create and configure undetected Chrome browser.

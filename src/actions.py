@@ -90,7 +90,7 @@ def action_select_raid(params, context: ActionContext):
     _check_and_handle_popup(nav)
 
     # Human-like browsing scroll
-    _perform_browse_scrolling(nav)
+    #_perform_browse_scrolling(nav)
     print("perform scrolling")
 
     # Find all visible raid rooms
@@ -208,7 +208,7 @@ def action_do_battle(params, context: ActionContext):
 
         
         # If until_finish is set, loop forever until boss dies
-        if not battle_config.until_finish or current_turn > battle_config.turn:
+        if not battle_config.until_finish and current_turn > battle_config.turn:
             context.raids_completed += 1
             print(f"[→] Turn limit reached ({battle_config.turn}). Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
@@ -220,32 +220,30 @@ def action_do_battle(params, context: ActionContext):
                 nav.click_element(fullauto_btn)
                 print("[⚙] Full Auto clicked")
                 nav.wait(0.2, 0.4)
+                try:
+                    atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=30)
+                    class_attr = atk_btn.get_attribute("class")
+                    
+                    if "display-off" in class_attr:
+                            
+                        # Move to next turn
+                        print(f"[i] Turn {current_turn} completed")
+                        current_turn += 1
+                        fullauto_clicked = 0
+                        nav.driver.refresh()
+                            
+                except TimeoutException:
+                    # Attack button not found - might have ended
+                    pass
                 if battle_config.refresh:
                     nav.driver.refresh()
                 else:
                     fullauto_clicked = 1
             except TimeoutException:
                 print("[!] Full Auto not found")
-                continue
-        
-        # Wait for turn to end: attack button disappears (display-off) then reappears (display-on)
-        try:
-            atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=30)
-            class_attr = atk_btn.get_attribute("class")
-            
-            if "display-off" in class_attr:
-                    
-                # Move to next turn
-                print(f"[i] Turn {current_turn} completed")
-                current_turn += 1
-                fullauto_clicked = 0
-                nav.driver.refresh()
-                    
-        except TimeoutException:
-            # Attack button not found - might have ended
-            pass
+                return ActionContext.RESULT_SUCCESS
 
-    return ActionContext.RESULT_SUCCESS
+
 
 @ActionRegistry.register("refresh_raid_list")
 def action_refresh_raid_list(params, context: ActionContext):
@@ -297,7 +295,7 @@ def action_clean_raid_queue(params, context: ActionContext):
             raid = raids[random.randint(0,len(raids)-1)]
             raid_id = raid.get_attribute("data-raid-id")
             print(f"[i] Processing pending raid {raid_id}")
-            raid.click()
+            nav.click_element(raid)
 
             # Claim its rewards
             try:
