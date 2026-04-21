@@ -202,10 +202,13 @@ def action_do_battle(params, context: ActionContext):
             return ActionContext.RESULT_SUCCESS
         except:
             pass
+        
+        print("current turn: "+str(current_turn))
+        print("config turn: "+str(battle_config.turn))
 
         
         # If until_finish is set, loop forever until boss dies
-        if not battle_config.until_finish and current_turn > battle_config.turn:
+        if not battle_config.until_finish or current_turn > battle_config.turn:
             context.raids_completed += 1
             print(f"[→] Turn limit reached ({battle_config.turn}). Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
@@ -276,7 +279,7 @@ def action_clean_raid_queue(params, context: ActionContext):
     nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
 
     try:
-        pending_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-unconfirmed-result", timeout=5)
+        pending_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-unconfirmed-result", timeout=3)
         nav.click_element(pending_btn)
         nav.wait_for_element(By.ID, "prt-unclaimed-list", timeout=5)
 
@@ -291,7 +294,7 @@ def action_clean_raid_queue(params, context: ActionContext):
                 break
 
             # Select first raid in list
-            raid = raids[0]
+            raid = raids[random.randint(0,len(raids)-1)]
             raid_id = raid.get_attribute("data-raid-id")
             print(f"[i] Processing pending raid {raid_id}")
             raid.click()
