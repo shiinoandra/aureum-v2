@@ -91,6 +91,7 @@ def action_select_raid(params, context: ActionContext):
 
     # Human-like browsing scroll
     _perform_browse_scrolling(nav)
+    print("perform scrolling")
 
     # Find all visible raid rooms
     raid_rooms = nav.driver.find_elements(
@@ -236,7 +237,7 @@ def action_refresh_raid_list(params, context: ActionContext):
     Click the raid list refresh button.
     """
     nav = context.navigator
-
+    print("refreshing raid list")
     try:
         refresh_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-search-refresh", timeout=2)
         nav.click_element(refresh_btn)

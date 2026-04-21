@@ -86,7 +86,7 @@ class CoreEngine:
         url = self.navigator.get_current_url()
         current_state = detect_state(url)
         self.config.current_state = current_state
-        
+        print("current state: "+str(self.config.current_state))
         if current_state == State.IDLE:
             # Unknown state, wait and check again
             self.navigator.wait(1, 2)
