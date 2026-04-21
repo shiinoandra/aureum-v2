@@ -36,7 +36,7 @@ class Navigator:
             self.driver.execute_script(
                 "arguments[0].scrollIntoView({block: 'nearest', inline: 'nearest'});", element
             )
-            # time.sleep(random.uniform(0.1, 0.2)) # Pause as if to locate the element
+            time.sleep(random.uniform(0.1, 0.2)) # Pause as if to locate the element
 
             # Add a small, random "adjustment" scroll. Humans rarely stop perfectly.
             scroll_offset = random.randint(-20, 20)
