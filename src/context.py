@@ -1,15 +1,23 @@
 from dataclasses import dataclass
 class ActionContext:
+
+    RESULT_SUCCESS ="success"
+    RESULT_FAILED = "failed"
+    RESULT_SKIP = "skip"
+
     def __init__(self, navigator, config_manager):
         self.navigator = navigator
         self.config = config_manager
         self.current_turn = 0
         self.raids_completed = 0
         self.battle_finished = False
+        self.last_result = None
     
     def reset(self):
         self.current_turn = 0
         self.battle_finished = False
+        self.last_result=None
+        
 class ActionRegistry:
     """Registry for actions - allows registering actions via decorator"""
     _actions = {}

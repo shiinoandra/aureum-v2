@@ -35,35 +35,56 @@ class TaskExecutor:
     def execute_task(self, task: dict):
         """Execute a task - runs all actions in sequence with popup checks."""
         actions = task.get("actions", [])
-        
-        for action_def in actions:
-            if not self._running:
+        action_map = {a["name"]: a for a in actions}
+
+        # Start from first action
+        current_name = actions[0]["name"]
+        max_iterations = 1000  # Prevent infinite loops
+        iterations = 0
+
+        while current_name and self._running and iterations < max_iterations:
+            iterations += 1
+            
+            # Check popup
+            popup_type = _check_and_handle_popup(self.navigator)
+            if popup_type:
+                if not self._handle_popup_recovery(popup_type):
+                    return False
+            
+            # Get action and params
+            action_def = action_map.get(current_name)
+            if not action_def:
+                print(f"[!] Action '{current_name}' not found")
                 break
             
-            # Check popup before each action
-            popup_type = _check_and_handle_popup(self.navigator)
-            if popup_type:
-                if not self._handle_popup_recovery(popup_type):
-                    # Popup was critical (captcha), stop
-                    return False
-            
-            name = action_def.get("name")
+            name = action_def["name"]
             params = action_def.get("params", {})
+            transitions = action_def.get("transitions", {})
             
+            # Execute action
             action_func = ActionRegistry.get(name)
             if action_func:
-                action_func(params, self.context)
+                result = action_func(params, self.context) or ActionContext.RESULT_SUCCESS
             else:
                 print(f"[!] Action '{name}' not found")
+                break
             
-            # Check popup after each action too
-            popup_type = _check_and_handle_popup(self.navigator)
-            if popup_type:
-                if not self._handle_popup_recovery(popup_type):
-                    return False
+            self.context.last_result = result
+            
+            # Determine next action from transitions
+            if result in transitions:
+                current_name = transitions[result]
+            else:
+                # No transition for result, try default
+                if ActionContext.RESULT_SUCCESS in transitions:
+                    current_name = transitions[ActionContext.RESULT_SUCCESS]
+                else:
+                    print(f"[!] No transition for result '{result}' in '{current_name}'")
+                    break
         
+        self.context.last_result = None
         return True
-    
+        
     def _handle_popup_recovery(self, popup_type: str) -> bool:
         """
         Handle popup based on type.
@@ -115,10 +136,6 @@ class TaskExecutor:
             return self.context.battle_finished
         
         return False
-    
-    def should_continue(self, task: dict) -> bool:
-        """Check if task loop should continue (not met exit, still running)"""
-        return self._running and not self.check_exit_condition(task)
     
     def stop(self):
         """Stop the task executor"""

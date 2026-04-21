@@ -100,7 +100,7 @@ def action_select_raid(params, context: ActionContext):
 
     if not raid_rooms:
         print("[!] No raids found in list")
-        return
+        return ActionContext.RESULT_FAILED
 
     # Filter by HP threshold
     HP_THRESHOLD = 60
@@ -118,17 +118,14 @@ def action_select_raid(params, context: ActionContext):
 
     if not eligible_raids:
         print("[i] No raids met HP threshold. Skipping.")
-        return
+        return ActionContext.RESULT_FAILED
 
     # Select random eligible raid
     target = random.choice(eligible_raids)
     print(f"[i] Selected raid with {target['hp']}% HP")
     nav.click_element(target["element"])
+    return ActionContext.RESULT_SUCCESS
 
-    # Check popup after joining
-    popup_result = _check_and_handle_popup(nav)
-    if popup_result:
-        return
 
 
 @ActionRegistry.register("select_summon")
@@ -146,9 +143,12 @@ def action_select_summon(params, context: ActionContext):
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-usual-ok"))
         )
         print("[i] Auto Summon Setting Found - using preset")
-        return
+        return ActionContext.RESULT_SUCCESS
     except TimeoutException:
         pass
+        
+    return ActionContext.RESULT_FAILED
+
 
     # TODO: Implement element-based summon selection if needed
     # For now, assume auto-summon preset is configured in-game
@@ -167,9 +167,10 @@ def action_join_battle(params, context: ActionContext):
         )
         nav.click_element(quest_start_btn)
         print("[✓] Joined battle")
+        return ActionContext.RESULT_SUCCESS
     except TimeoutException:
         print("[!] Quest start button not found")
-
+    return ActionContext.RESULT_FAILED
 
 @ActionRegistry.register("do_battle")
 def action_do_battle(params, context: ActionContext):
@@ -183,7 +184,7 @@ def action_do_battle(params, context: ActionContext):
             EC.visibility_of_element_located((By.CSS_SELECTOR, ".btn-attack-start.display-on"))
         )
     except TimeoutException:
-        return
+        return ActionContext.RESULT_FAILED
     
     current_turn = 1
     fullauto_clicked = 0
@@ -198,9 +199,10 @@ def action_do_battle(params, context: ActionContext):
             nav.click_element(finished_message)
             context.raids_completed += 1
             print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
-            return
+            return ActionContext.RESULT_SUCCESS
         except:
             pass
+
         
         # If until_finish is set, loop forever until boss dies
         if not battle_config.until_finish:
@@ -208,7 +210,8 @@ def action_do_battle(params, context: ActionContext):
             if current_turn >= battle_config.turn:
                 context.raids_completed += 1
                 print(f"[→] Turn limit reached. Raids completed: {context.raids_completed}")
-                return
+                return ActionContext.RESULT_SUCCESS
+
         
         # Click full auto
         if fullauto_clicked == 0:
@@ -230,20 +233,28 @@ def action_do_battle(params, context: ActionContext):
         except:
             pass
 
+    return ActionContext.RESULT_SUCCESS
 
 @ActionRegistry.register("refresh_raid_list")
 def action_refresh_raid_list(params, context: ActionContext):
     """
     Click the raid list refresh button.
     """
-    nav = context.navigator
+nav = context.navigator
     print("refreshing raid list")
+
+    if "#quest/assist" not in nav.get_current_url():
+        nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
+        nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
+
     try:
         refresh_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-search-refresh", timeout=2)
         nav.click_element(refresh_btn)
         print("[i] Raid list refreshed")
+        return ActionContext.RESULT_SUCCESS
     except TimeoutException:
         print("[!] Refresh button not found")
+        return ActionContext.RESULT_FAILED
 
 
 @ActionRegistry.register("clean_raid_queue")
@@ -289,17 +300,16 @@ def action_clean_raid_queue(params, context: ActionContext):
             nav.wait_for_element(By.CSS_SELECTOR, "#prt-unclaimed-list .btn-multi-raid.lis-raid", timeout=10)
 
         print("[✓] Raid queue cleaned")
+        return ActionContext.RESULT_SUCCESS
 
     except TimeoutException:
         print("[i] No pending battles button found")
+        return ActionContext.RESULT_SUCCESS
 
     except Exception as e:
         print(f"[!!] Error cleaning raid queue: {e}")
+        return ActionContext.RESULT_FAILED
 
-    finally:
-        # Return to raid list
-        if "#quest/assist" not in nav.driver.current_url:
-            nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
 
 
 @ActionRegistry.register("go_to_raid_list")
@@ -311,6 +321,7 @@ def action_go_to_raid_list(params, context: ActionContext):
     nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
     nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
     print("[i] Arrived at raid list")
+    return ActionContext.RESULT_SUCCESS
 
 
 @ActionRegistry.register("go_to_main_menu")
@@ -322,6 +333,7 @@ def action_go_to_main_menu(params, context: ActionContext):
     nav.driver.get("https://game.granbluefantasy.jp/#mypage/")
     nav.wait(1, 2)
     print("[i] Arrived at main menu")
+    return ActionContext.RESULT_SUCCESS
 
 
 # =============================================================================
@@ -345,3 +357,4 @@ def _perform_browse_scrolling(nav: Navigator):
 
         actions.scroll_by_amount(0, -random.randint(300, 800)).perform()
         time.sleep(random.uniform(0.4, 1.0))
+    return ActionContext.RESULT_SUCCESS

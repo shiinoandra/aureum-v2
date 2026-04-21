@@ -1,10 +1,53 @@
 {
   "task_type": "raid",
   "actions": [
-    {"name": "select_raid", "params": {"filter": "prefer_Lv100"}},
-    {"name": "select_summon", "params": {}},
-    {"name": "join_battle", "params": {}},
-    {"name": "do_battle", "params": {"mode": "full_auto"}}
+      {
+        "name": "refresh_raid_list",
+        "params": {},
+        "transitions": {
+          "success":   "select_raid",
+          "failed":   "refresh_raid_list"
+        }
+      },
+      {
+      "name": "select_raid",
+      "params": {
+        "filter": "prefer_Lv100"
+      },
+      "transitions": {
+        "success":   "select_summon",
+        "failed":   "refresh_raid_list"
+      }
+    },
+    {
+      "name": "select_summon",
+      "params": {},
+      "transitions": {
+        "success":   "join_battle",
+        "failed": "select_raid"
+      }
+    },
+    {
+      "name": "join_battle",
+      "params": {},
+      "transitions": {
+        "success":   "do_battle",
+        "failed": "select_raid"
+      }
+    },
+    {
+      "name": "do_battle",
+      "params": {
+        "mode": "full_auto"
+      },
+      "transitions": {
+        "success":   "select_raid",
+        "failed": "select_raid"
+      }
+    }
   ],
-  "exit_condition": {"type": "raid_count", "value": 10}
+  "exit_condition": {
+    "type": "raid_count",
+    "value": 10
+  }
 }
