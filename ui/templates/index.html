@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aureum Control Panel</title>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .card { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .form-group { margin: 10px 0; }
+        label { display: inline-block; width: 150px; }
+        input[type="number"] { width: 80px; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; }
+        button:hover { background: #45a049; }
+        #status { padding: 10px; background: #f0f0f0; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Aureum Control Panel</h1>
+    
+    <div id="status">Current State: <span id="state">Loading...</span></div>
+    
+    <div class="card">
+        <h3>Battle Parameters</h3>
+        <div class="form-group">
+            <label>Turns:</label>
+            <input type="number" id="turn" min="1" max="100">
+        </div>
+        <div class="form-group">
+            <label>Refresh:</label>
+            <input type="checkbox" id="refresh">
+        </div>
+        <div class="form-group">
+            <label>Until Finish:</label>
+            <input type="checkbox" id="until_finish">
+        </div>
+        <div class="form-group">
+            <label>Trigger Skip:</label>
+            <input type="checkbox" id="trigger_skip">
+        </div>
+        <div class="form-group">
+            <label>Think Time (min):</label>
+            <input type="number" id="think_time_min" step="0.1">
+        </div>
+        <div class="form-group">
+            <label>Think Time (max):</label>
+            <input type="number" id="think_time_max" step="0.1">
+        </div>
+        <button onclick="saveConfig()">Save</button>
+    </div>
+    <script>
+        function loadConfig() {
+            fetch('/api/config')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('turn').value = data.turn;
+                    document.getElementById('refresh').checked = data.refresh;
+                    document.getElementById('until_finish').checked = data.until_finish;
+                    document.getElementById('trigger_skip').checked = data.trigger_skip;
+                    document.getElementById('think_time_min').value = data.think_time_min;
+                    document.getElementById('think_time_max').value = data.think_time_max;
+                    document.getElementById('state').textContent = data.current_state;
+                });
+        }
+        
+        function saveConfig() {
+            fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    turn: parseInt(document.getElementById('turn').value),
+                    refresh: document.getElementById('refresh').checked,
+                    until_finish: document.getElementById('until_finish').checked,
+                    trigger_skip: document.getElementById('trigger_skip').checked,
+                    think_time_min: parseFloat(document.getElementById('think_time_min').value),
+                    think_time_max: parseFloat(document.getElementById('think_time_max').value)
+                })
+            }).then(() => alert('Saved!'));
+        }
+        
+        loadConfig();
+        setInterval(loadConfig, 2000);
+    </script>
+</body>
+</html>

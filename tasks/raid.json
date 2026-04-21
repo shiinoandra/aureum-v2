@@ -1,0 +1,10 @@
+{
+  "task_type": "raid",
+  "actions": [
+    {"name": "select_raid", "params": {"filter": "prefer_Lv100"}},
+    {"name": "select_summon", "params": {}},
+    {"name": "join_battle", "params": {}},
+    {"name": "do_battle", "params": {"mode": "full_auto"}}
+  ],
+  "exit_condition": {"type": "raid_count", "value": 10}
+}

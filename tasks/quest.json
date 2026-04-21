@@ -1,0 +1,10 @@
+{
+  "task_type": "quest",
+  "actions": [
+    {"name": "select_quest", "params": {"quest_id": "story_1"}},
+    {"name": "select_summon", "params": {}},
+    {"name": "join_battle", "params": {}},
+    {"name": "do_battle", "params": {"mode": "full_auto"}}
+  ],
+  "exit_condition": {"type": "until_finish", "value": true}
+}

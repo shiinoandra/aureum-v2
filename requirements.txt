@@ -1,0 +1,6 @@
+selenium>=4.0.0
+undetected-chromedriver>=3.0.0
+pyautogui>=0.9.53
+bezier>=2020.5
+numpy>=1.21.0
+flask>=2.0.0

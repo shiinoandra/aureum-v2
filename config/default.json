@@ -1,0 +1,8 @@
+{
+  "turn": 1,
+  "refresh": true,
+  "until_finish": false,
+  "trigger_skip": false,
+  "think_time_min": 0.2,
+  "think_time_max": 0.5
+}
