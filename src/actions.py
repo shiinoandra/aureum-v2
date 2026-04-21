@@ -174,6 +174,9 @@ def action_do_battle(params, context: ActionContext):
     nav = context.navigator
     config = context.config
     battle_config = config.get_battle_config()
+    pre_fa = True
+    if pre_fa:
+        pyautogui.click()
     
     # Initial battle UI wait
     try:
@@ -243,17 +246,20 @@ def action_do_battle(params, context: ActionContext):
         # Method D: "Battle has ended" popup (edge case before full auto click)
         print("checking method D")
         if not battle_ended:
-            print("inside method D if")
             try:
-                ended_popup = nav.driver.find_element(By.CSS_SELECTOR, ".prt-popup-footer")
-                print("[→] Battle ended - detected 'battle has ended' popup")
-                battle_ended = True
-                try:
-                    click_target = ended_popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
-                    nav.click_element(click_target)
-                except NoSuchElementException:
-                    pass
-            except NoSuchElementException:
+                # Wait up to 1.5s for the OK button inside the ended popup to be clickable
+                click_target = WebDriverWait(nav.driver, 1.5).until(
+                    EC.element_to_be_clickable((
+                        By.CSS_SELECTOR,
+                        ".pop.usual.pop-rematch .btn-usual-ok"
+                    ))
+                )
+                # Optional: verify the popup text to avoid false positives
+                popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop.usual.pop-rematch")
+                if "battle has ended" in popup.text.lower():
+                    print("[→] Battle ended - detected 'battle has ended' popup")
+                    battle_ended = True
+            except TimeoutException:
                 pass
         
         if battle_ended:
