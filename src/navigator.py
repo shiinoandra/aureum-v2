@@ -65,8 +65,24 @@ class Navigator:
         else:
             self._human_move((x, y))
         
-        pyautogui.click()  
-    
+        if not fast:
+            # 1-2 tiny corrections like old script, but faster
+            for _ in range(random.randint(1, 2)):
+                pyautogui.move(
+                    random.randint(-2, 2),
+                    random.randint(-2, 2),
+                    duration=random.uniform(0.01, 0.02)
+                )
+            
+            # 2. Variable hold click (the key anti-detection feature)
+        hold_time = random.uniform(0.03, 0.08)
+        pyautogui.mouseDown()
+        time.sleep(hold_time)
+        pyautogui.mouseUp()    
+
+        if(random.uniform(0.0,1.0)>0.5):
+            self._move_away(element)
+        
     def _human_move(self, end_pos: tuple):
         """Move mouse with bezier curve - natural but slower"""
         start_pos = pyautogui.position()
@@ -107,44 +123,62 @@ class Navigator:
             pyautogui.moveTo(point[0], point[1])
             time.sleep(duration / steps)
     
+    # def _fast_move(self, end_pos: tuple):
+    #     """Fast mouse movement - less natural but faster"""
+    #     start_pos = pyautogui.position()
+    #     distance = ((end_pos[0]-start_pos[0])**2 + (end_pos[1]-start_pos[1])**2) ** 0.5
+        
+    #     # Very fast: 50-100ms for most moves
+    #     duration = random.uniform(0.05, 0.1) if distance < 300 else random.uniform(0.1, 0.15)
+    #     steps = 2
+        
+    #     # Simple linear interpolation
+    #     for i in range(steps + 1):
+    #         t = i / steps
+    #         x = start_pos[0] + (end_pos[0] - start_pos[0]) * t
+    #         y = start_pos[1] + (end_pos[1] - start_pos[1]) * t
+    #         pyautogui.moveTo(x, y)
+    #         time.sleep(duration / steps)
+
     def _fast_move(self, end_pos: tuple):
-        """Fast mouse movement - less natural but faster"""
         start_pos = pyautogui.position()
-        distance = ((end_pos[0]-start_pos[0])**2 + (end_pos[1]-start_pos[1])**2) ** 0.5
         
-        # Very fast: 50-100ms for most moves
-        duration = random.uniform(0.05, 0.1) if distance < 300 else random.uniform(0.1, 0.15)
-        steps = 2
+        # Overshoot by 5-15px in a random direction
+        overshoot_x = end_pos[0] + random.randint(-15, 15)
+        overshoot_y = end_pos[1] + random.randint(-15, 15)
         
-        # Simple linear interpolation
-        for i in range(steps + 1):
-            t = i / steps
-            x = start_pos[0] + (end_pos[0] - start_pos[0]) * t
-            y = start_pos[1] + (end_pos[1] - start_pos[1]) * t
-            pyautogui.moveTo(x, y)
-            time.sleep(duration / steps)
+        # Step 1: Move 80% of the way to overshoot point
+        t = 0.8
+        mid_x = start_pos[0] + (overshoot_x - start_pos[0]) * t
+        mid_y = start_pos[1] + (overshoot_y - start_pos[1]) * t
+        pyautogui.moveTo(mid_x, mid_y)
+        time.sleep(random.uniform(0.02, 0.04))
+        
+        # Step 2: Snap to actual target
+        pyautogui.moveTo(end_pos[0], end_pos[1])
+        time.sleep(random.uniform(0.02, 0.03))
 
     def _move_away(self, element):
-        """Move mouse away from element after click"""
+        """Fast move away after click"""
         rect = self.get_element_rect(element)
         screen_w, screen_h = pyautogui.size()
         
-        # Pick random direction
         direction = random.choice(['left', 'right', 'up', 'down'])
         if direction == 'left':
-            new_x = max(0, rect["x"] - random.randint(50, 200))
-            new_y = rect["y"] + random.randint(-50, 50)
+            new_x = max(0, rect["x"] - random.randint(80, 250))
+            new_y = rect["y"] + random.randint(-30, 30)
         elif direction == 'right':
-            new_x = min(screen_w, rect["x"] + rect["width"] + random.randint(50, 200))
-            new_y = rect["y"] + random.randint(-50, 50)
+            new_x = min(screen_w, rect["x"] + rect["width"] + random.randint(80, 250))
+            new_y = rect["y"] + random.randint(-30, 30)
         elif direction == 'up':
-            new_x = rect["x"] + random.randint(-50, 50)
-            new_y = max(0, rect["y"] - random.randint(50, 200))
+            new_x = rect["x"] + random.randint(-30, 30)
+            new_y = max(0, rect["y"] - random.randint(80, 250))
         else:
-            new_x = rect["x"] + random.randint(-50, 50)
-            new_y = min(screen_h, rect["y"] + rect["height"] + random.randint(50, 200))
-        
-        pyautogui.moveTo(new_x, new_y, duration=random.uniform(0.1, 0.2))
+            new_x = rect["x"] + random.randint(-30, 30)
+            new_y = min(screen_h, rect["y"] + rect["height"] + random.randint(80, 250))
+    
+    # Use FAST move to get away quickly
+    self._fast_move((new_x, new_y))
 
     def scroll_element(self,element):
         # Option 2: Mouse wheel scroll (more human-like)

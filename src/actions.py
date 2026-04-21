@@ -175,69 +175,101 @@ def action_do_battle(params, context: ActionContext):
     config = context.config
     battle_config = config.get_battle_config()
     
-    # Wait for battle UI
+    # Initial battle UI wait
     try:
-        WebDriverWait(nav.driver, 10).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, ".btn-attack-start.display-on"))
-        )
+        nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=10)
     except TimeoutException:
         return ActionContext.RESULT_FAILED
+    
+    if battle_config.trigger_skip:
+        nav.driver.refresh()
+        try:
+            nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
+        except TimeoutException:
+            return ActionContext.RESULT_FAILED
     
     current_turn = 1
     fullauto_clicked = 0
     
-    while True:
-        # Check if battle ended (boss died)
+    start_time = time.time()
+    while time.time() - start_time < 300:
+        
+        # === 1. Battle ended naturally? ===
         try:
-            finished_message = nav.driver.find_element(
-                By.XPATH,
-                "//div[contains(@class, 'pop-exp')]//div[contains(@class, 'btn-usual-ok')]"
+            finished_message = WebDriverWait(nav.driver, 1).until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//div[contains(@class, 'pop-exp')]//div[contains(@class, 'btn-usual-ok')]"
+                ))
             )
             nav.click_element(finished_message)
             context.raids_completed += 1
+            context.battle_finished = True
             print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
-        except:
+        except TimeoutException:
             pass
         
-
-        
-        # If until_finish is set, loop forever until boss dies
+        # === 2. Turn limit reached? ===
         if not battle_config.until_finish and current_turn > battle_config.turn:
             context.raids_completed += 1
             print(f"[→] Turn limit reached ({battle_config.turn}). Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
         
-        # Click full auto
+        # === 3. Was attack auto-triggered while we were refreshing? ===
+        try:
+            atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=5)
+            if "display-off" in atk_btn.get_attribute("class"):
+                print(f"[i] Turn {current_turn} completed")
+                current_turn += 1
+                fullauto_clicked = 0
+                nav.wait(0.3, 0.5)
+                
+                # Refresh to skip attack animation / reset UI for next turn
+                nav.driver.refresh()
+                try:
+                    nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
+                    print("[✓] Battle UI restored after turn refresh")
+                except TimeoutException:
+                    print("[×] Battle UI did not return after turn refresh")
+                    return ActionContext.RESULT_FAILED
+                continue
+        except TimeoutException:
+            nav.wait(0.3, 0.5)
+            pass
+        
+        # === 4. Click full auto if not yet clicked ===
         if fullauto_clicked == 0:
             try:
                 fullauto_btn = nav.wait_for_clickable(By.CSS_SELECTOR, ".btn-auto", timeout=5)
                 nav.click_element(fullauto_btn)
+                nav._move_away(fullauto_btn)
                 print("[⚙] Full Auto clicked")
+                fullauto_clicked = 1
                 nav.wait(0.2, 0.4)
-                time.sleep(random.uniform(battle_config.think_time_min,battle_config.think_time_max))
-                try:
-                    atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=30)
-                    class_attr = atk_btn.get_attribute("class")
-                    
-                    if "display-off" in class_attr:
-                            
-                        # Move to next turn
-                        print(f"[i] Turn {current_turn} completed")
-                        current_turn += 1
-                        fullauto_clicked = 0
-                        time.sleep(random.uniform(battle_config.think_time_min,battle_config.think_time_max))
-                        nav.driver.refresh()
-                            
-                except TimeoutException:
-                    # Attack button not found - might have ended
-                    pass
-                if battle_config.refresh:
-                    nav.driver.refresh()
-                else:
-                    fullauto_clicked = 1
             except TimeoutException:
-                return ActionContext.RESULT_SUCCESS
+                # Might be battle ended or page loading. Let loop check popup again.
+                print("[!] Full Auto not found, retrying...")
+                nav.wait(0.5, 1.0)
+                continue
+        
+        # === 5. refresh=true: refresh to skip skill animations ===
+        if battle_config.refresh:
+            print("[i] Refreshing to skip skill animations...")
+            fullauto_clicked = 0  # Page will reload, need to click again
+            nav.driver.refresh()
+            try:
+                nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
+                print("[✓] Battle UI restored after animation refresh")
+            except TimeoutException:
+                print("[×] Battle UI did not return after animation refresh")
+                return ActionContext.RESULT_FAILED
+            continue
+        
+        # === 6. refresh=false: let animations play out ===
+        else:
+            nav.wait(0.5, 1.0)
+            continue
 
 
 
