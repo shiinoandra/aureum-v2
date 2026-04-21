@@ -177,14 +177,14 @@ def action_do_battle(params, context: ActionContext):
     
     # Initial battle UI wait
     try:
-        nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=10)
+        nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=7)
     except TimeoutException:
         return ActionContext.RESULT_FAILED
     
     if battle_config.trigger_skip:
         nav.driver.refresh()
         try:
-            nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
+            nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=10)
         except TimeoutException:
             return ActionContext.RESULT_FAILED
     
@@ -259,12 +259,7 @@ def action_do_battle(params, context: ActionContext):
                 
                 # Refresh to skip attack animation / reset UI for next turn
                 nav.driver.refresh()
-                try:
-                    nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
-                    print("[✓] Battle UI restored after turn refresh")
-                except TimeoutException:
-                    print("[×] Battle UI did not return after turn refresh")
-                    return ActionContext.RESULT_FAILED
+
                 continue
         except TimeoutException:
             nav.wait(0.3, 0.5)
@@ -290,12 +285,6 @@ def action_do_battle(params, context: ActionContext):
             print("[i] Refreshing to skip skill animations...")
             fullauto_clicked = 0  # Page will reload, need to click again
             nav.driver.refresh()
-            try:
-                nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
-                print("[✓] Battle UI restored after animation refresh")
-            except TimeoutException:
-                print("[×] Battle UI did not return after animation refresh")
-                return ActionContext.RESULT_FAILED
             continue
         
         # === 6. refresh=false: let animations play out ===
@@ -360,7 +349,7 @@ def action_clean_raid_queue(params, context: ActionContext):
             # Claim its rewards
             try:
                 ok_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-usual-ok", timeout=2)
-                time.sleep(random.uniform(0.3,0.5))
+                time.sleep(random.uniform(0.2,0.3))
                 if(random.uniform(0,1)>0.5):
                     nav.click_element(ok_btn)
                 nav.wait(0.5)
