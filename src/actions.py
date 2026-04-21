@@ -240,7 +240,7 @@ def action_refresh_raid_list(params, context: ActionContext):
     """
     Click the raid list refresh button.
     """
-nav = context.navigator
+    nav = context.navigator
     print("refreshing raid list")
 
     if "#quest/assist" not in nav.get_current_url():
