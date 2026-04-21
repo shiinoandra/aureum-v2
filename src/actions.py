@@ -193,22 +193,54 @@ def action_do_battle(params, context: ActionContext):
     
     start_time = time.time()
     while time.time() - start_time < 300:
+        battle_ended = False
+        click_target = None
+
+        # Method A: URL navigated to result page
+        current_url = nav.get_current_url()
+        if "#result_multi" in current_url or "#result/" in current_url:
+            print("[→] Battle ended - detected result URL")
+            battle_ended = True
+            try:
+                click_target = nav.driver.find_element(By.CSS_SELECTOR, ".prt-result-cnt .btn-usual-ok")
+            except NoSuchElementException:
+                pass
         
-        # === 1. Battle ended naturally? ===
-        try:
-            finished_message = WebDriverWait(nav.driver, 1).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    "//div[contains(@class, 'pop-exp')]//div[contains(@class, 'btn-usual-ok')]"
-                ))
-            )
-            nav.click_element(finished_message)
+        # Method B: Result container visible
+        if not battle_ended:
+            try:
+                result_cnt = nav.driver.find_element(By.CSS_SELECTOR, ".prt-result-cnt")
+                if result_cnt.is_displayed():
+                    print("[→] Battle ended - detected result container")
+                    battle_ended = True
+                    try:
+                        click_target = result_cnt.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
+                    except NoSuchElementException:
+                        pass
+            except NoSuchElementException:
+                pass
+        
+        # Method C: Victory popup (fallback)
+        if not battle_ended:
+            try:
+                click_target = WebDriverWait(nav.driver, 1).until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        "//div[contains(@class, 'pop-exp')]//div[contains(@class, 'btn-usual-ok')]"
+                    ))
+                )
+                print("[→] Battle ended - detected victory popup")
+                battle_ended = True
+            except TimeoutException:
+                pass
+        
+        if battle_ended:
+            if click_target:
+                nav.click_element(click_target)
             context.raids_completed += 1
             context.battle_finished = True
             print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
-        except TimeoutException:
-            pass
         
         # === 2. Turn limit reached? ===
         if not battle_config.until_finish and current_turn > battle_config.turn:
