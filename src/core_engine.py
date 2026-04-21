@@ -42,6 +42,7 @@ class CoreEngine:
         self._current_task = self.task_executor.load_task(task_path)
         self._task_thread = threading.Thread(target=self._run_task_loop)
         self._task_thread.daemon = True
+        self._running = True
         self._task_thread.start()
     
     def _run_task_loop(self):
