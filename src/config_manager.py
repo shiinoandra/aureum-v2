@@ -15,6 +15,7 @@ class BattleConfig:
     trigger_skip : bool = False
     think_time_min: int = 0.2
     think_time_max: int = 0.5
+    pre_fa:bool = False
 
 
 class ConfigManager:
@@ -56,7 +57,8 @@ class ConfigManager:
                 until_finish=self._battle_config.until_finish,
                 trigger_skip=self._battle_config.trigger_skip,
                 think_time_min=self._battle_config.think_time_min,
-                think_time_max=self._battle_config.think_time_max
+                think_time_max=self._battle_config.think_time_max,
+                pre_fa = self._battle_config.pre_fa
             )
     def update_battle_config(self,**kwargs):
         with self._config_lock:

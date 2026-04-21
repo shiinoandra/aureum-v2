@@ -174,9 +174,10 @@ def action_do_battle(params, context: ActionContext):
     nav = context.navigator
     config = context.config
     battle_config = config.get_battle_config()
-    pre_fa = True
-    if pre_fa:
-        pyautogui.click()
+    
+    if battle_config.pre_fa:
+        nav.click_onthespot()
+        fullauto_clicked=1
     
     # Initial battle UI wait
     try:
@@ -199,11 +200,14 @@ def action_do_battle(params, context: ActionContext):
         battle_ended = False
         click_target = None
 
+        if battle_config.pre_fa:
+            nav.click_onthespot()
+            fullauto_clicked=1
+        
+
         # Method A: URL navigated to result page
         current_url = nav.get_current_url()
-        print("checking method A")
         if "#result_multi" in current_url or "#result/" in current_url:
-            print("inside method A if")
             print("[→] Battle ended - detected result URL")
             battle_ended = True
             try:
@@ -211,9 +215,7 @@ def action_do_battle(params, context: ActionContext):
             except NoSuchElementException:
                 pass
         
-        print("checking method B")
         if not battle_ended:
-            print("inside method B if")
             try:
                 result_cnt = nav.driver.find_element(By.CSS_SELECTOR, ".prt-result-cnt")
                 if result_cnt.is_displayed():
@@ -228,9 +230,7 @@ def action_do_battle(params, context: ActionContext):
         
         # Method C: Victory popup (fallback)
 
-        print("checking method C")
         if not battle_ended:
-            print("inside method C if")
             try:
                 click_target = WebDriverWait(nav.driver, 1).until(
                     EC.element_to_be_clickable((
@@ -244,24 +244,29 @@ def action_do_battle(params, context: ActionContext):
                 pass
 
         # Method D: "Battle has ended" popup (edge case before full auto click)
-        print("checking method D")
         if not battle_ended:
             try:
-                # Wait up to 1.5s for the OK button inside the ended popup to be clickable
                 click_target = WebDriverWait(nav.driver, 1.5).until(
                     EC.element_to_be_clickable((
                         By.CSS_SELECTOR,
-                        ".pop.usual.pop-rematch .btn-usual-ok"
+                        ".pop-usual.pop-rematch-fail .btn-usual-ok"
                     ))
                 )
-                # Optional: verify the popup text to avoid false positives
-                popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop.usual.pop-rematch")
+
+                popup = nav.driver.find_element(
+                    By.CSS_SELECTOR,
+                    ".pop-usual.pop-rematch-fail"
+                )
+
                 if "battle has ended" in popup.text.lower():
-                    print("[→] Battle ended - detected 'battle has ended' popup")
+                    print("[→] Battle ended - detected popup")
                     battle_ended = True
+
+                    click_target.click()  # don't forget to actually click
+
             except TimeoutException:
                 pass
-        
+                
         if battle_ended:
             if click_target:
                 nav.click_element(click_target)
@@ -384,7 +389,7 @@ def action_clean_raid_queue(params, context: ActionContext):
                 pass
 
             # Go back to unclaimed list
-            nav.driver.back()
+            nav.driver.get("https://game.granbluefantasy.jp/#quest/assist/unclaimed/0/0")
             nav.wait_for_element(By.CSS_SELECTOR, "#prt-unclaimed-list .btn-multi-raid.lis-raid", timeout=2)
 
         print("[✓] Raid queue cleaned")
