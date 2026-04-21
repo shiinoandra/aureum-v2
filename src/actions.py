@@ -245,7 +245,7 @@ def action_do_battle(params, context: ActionContext):
         if not battle_ended:
             print("inside method D if")
             try:
-                ended_popup = nav.driver.find_element(By.CSS_SELECTOR, "pop.rematch")
+                ended_popup = nav.driver.find_element(By.CSS_SELECTOR, ".prt-popup-footer")
                 print("[→] Battle ended - detected 'battle has ended' popup")
                 battle_ended = True
                 try:

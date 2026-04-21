@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import random
 import time
+import math
 import pyautogui
 import numpy as np
 from bezier import Curve
@@ -158,25 +159,28 @@ class Navigator:
         time.sleep(random.uniform(0.02, 0.03))
 
     def _move_away(self, element):
-        """Fast move away after click"""
+        """Move mouse away from element after click - natural radius-based"""
         rect = self.get_element_rect(element)
         screen_w, screen_h = pyautogui.size()
         
-        direction = random.choice(['left', 'right', 'up', 'down'])
-        if direction == 'left':
-            new_x = max(0, rect["x"] - random.randint(80, 250))
-            new_y = rect["y"] + random.randint(-30, 30)
-        elif direction == 'right':
-            new_x = min(screen_w, rect["x"] + rect["width"] + random.randint(80, 250))
-            new_y = rect["y"] + random.randint(-30, 30)
-        elif direction == 'up':
-            new_x = rect["x"] + random.randint(-30, 30)
-            new_y = max(0, rect["y"] - random.randint(80, 250))
-        else:
-            new_x = rect["x"] + random.randint(-30, 30)
-            new_y = min(screen_h, rect["y"] + rect["height"] + random.randint(80, 250))
-    
-        # Use FAST move to get away quickly
+        # Element center
+        center_x = rect["x"] + rect["width"] / 2
+        center_y = rect["y"] + rect["height"] / 2
+        
+        # Random offset within radius (-150 to +150 px from center)
+        radius = random.randint(80, 150)
+        angle = random.uniform(0, 2 * math.pi)
+        offset_x = int(radius * math.cos(angle))
+        offset_y = int(radius * math.sin(angle))
+        
+        new_x = center_x + offset_x
+        new_y = center_y + offset_y
+        
+        # Clamp with padding so it doesn't snap to screen borders
+        padding = 50
+        new_x = max(padding, min(screen_w - padding, new_x))
+        new_y = max(padding, min(screen_h - padding, new_y))
+        
         self._fast_move((new_x, new_y))
 
     def scroll_element(self,element):
