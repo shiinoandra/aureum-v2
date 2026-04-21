@@ -54,28 +54,28 @@ class CoreEngine:
         3. Check exit condition (raids_completed >= target)
         4. Repeat or exit
         """
+        print("[*] Task loop started")
         while self._running and self._current_task:
             try:
-                # Reset context for new raid cycle
-                # Note: raids_completed is NOT reset - it's task-level
                 self.task_executor.context.reset()
+                print("[*] Context reset, executing task...")
                 
-                # Execute all actions in sequence
                 result = self.task_executor.execute_task(self._current_task)
+                print(f"[*] Execute result: {result}")
                 
                 if not result:
-                    # Task stopped (e.g., captcha)
-                    print("[!] Task stopped")
+                    print("[!] Execute returned False")
                     break
                 
-                # Check exit condition after raid completes
-                if self.task_executor.check_exit_condition(self._current_task):
-                    print(f"[✓] Exit condition met. Completed {self.task_executor.context.raids_completed} raids.")
-                    break
+                exit_met = self.task_executor.check_exit_condition(self._current_task)
+                print(f"[*] Exit condition met: {exit_met}")
                 
+                if exit_met:
+                    break
             except Exception as e:
-                print(f"[!] Error in task: {e}")
-                # Recovery will be handled by state machine in main loop
+                print(f"[!] Exception in task: {e}")
+                import traceback
+                traceback.print_exc()
 
     def _main_loop(self):
         """

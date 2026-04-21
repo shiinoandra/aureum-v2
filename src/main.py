@@ -68,6 +68,7 @@ def main():
     if raid_task_path.exists():
         print(f"[*] Starting raid task from {raid_task_path}")
         engine.start_task(raid_task_path)
+        print(f"[*] Task thread alive: {engine._task_thread.is_alive()}")
     else:
         print(f"[!] Task file not found: {raid_task_path}")
         driver.quit()
