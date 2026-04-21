@@ -198,7 +198,9 @@ def action_do_battle(params, context: ActionContext):
 
         # Method A: URL navigated to result page
         current_url = nav.get_current_url()
+        print("checking method A")
         if "#result_multi" in current_url or "#result/" in current_url:
+            print("inside method A if")
             print("[→] Battle ended - detected result URL")
             battle_ended = True
             try:
@@ -206,8 +208,9 @@ def action_do_battle(params, context: ActionContext):
             except NoSuchElementException:
                 pass
         
-        # Method B: Result container visible
+        print("checking method B")
         if not battle_ended:
+            print("inside method B if")
             try:
                 result_cnt = nav.driver.find_element(By.CSS_SELECTOR, ".prt-result-cnt")
                 if result_cnt.is_displayed():
@@ -221,7 +224,10 @@ def action_do_battle(params, context: ActionContext):
                 pass
         
         # Method C: Victory popup (fallback)
+
+        print("checking method C")
         if not battle_ended:
+            print("inside method C if")
             try:
                 click_target = WebDriverWait(nav.driver, 1).until(
                     EC.element_to_be_clickable((
@@ -232,6 +238,23 @@ def action_do_battle(params, context: ActionContext):
                 print("[→] Battle ended - detected victory popup")
                 battle_ended = True
             except TimeoutException:
+                pass
+
+        # Method D: "Battle has ended" popup (edge case before full auto click)
+        print("checking method D")
+        if not battle_ended:
+            print("inside method D if")
+            try:
+                ended_popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop.usual.pop.rematch")
+                popup_text = ended_popup.text
+                if "battle has ended" in popup_text.lower():
+                    print("[→] Battle ended - detected 'battle has ended' popup")
+                    battle_ended = True
+                    try:
+                        click_target = ended_popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
+                    except NoSuchElementException:
+                        pass
+            except NoSuchElementException:
                 pass
         
         if battle_ended:
@@ -259,7 +282,6 @@ def action_do_battle(params, context: ActionContext):
                 
                 # Refresh to skip attack animation / reset UI for next turn
                 nav.driver.refresh()
-
                 continue
         except TimeoutException:
             nav.wait(0.3, 0.5)
