@@ -102,6 +102,8 @@ def action_select_raid(params, context: ActionContext):
     Params:
         - filter: "prefer_Lv100" (filters raids with HP >= 60%)
     """
+    config = context.config
+    battle_config = config.get_battle_config()
     nav = context.navigator
 
     # Navigate to raid list if not already there
@@ -158,10 +160,10 @@ def action_select_raid(params, context: ActionContext):
                 raid_info["players_max"] = 30
 
             # HP range
-            if not (config.min_hp_threshold <= raid_info["hp_percent"] <= config.max_hp_threshold):
+            if not (battle_config.min_hp_threshold <= raid_info["hp_percent"] <= battle_config.max_hp_threshold):
                 continue
             # Player count range
-            if not (config.min_people <= raid_info["players_current"] <= config.max_people):
+            if not (battle_config.min_people <= raid_info["players_current"] <= battle_config.max_people):
                 continue
             # Name filter (optional whitelist
 
@@ -176,7 +178,7 @@ def action_select_raid(params, context: ActionContext):
 
     # Select random eligible raid
     target = random.choice(eligible_raids)
-    print(f"[i] Selected raid with {target['hp']}% HP and {target['players_current']} player")
+    print(f"[i] Selected raid with {target['hp_percent']}% HP and {target['players_current']} player")
     nav.click_element(target["element"])
     return ActionContext.RESULT_SUCCESS
 
