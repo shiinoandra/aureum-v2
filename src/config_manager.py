@@ -20,6 +20,7 @@ class BattleConfig:
     max_hp_threshold: int = 100
     min_people: int = 1
     max_people: int = 30
+    raid_amount: int = 10
     summon_priority: List[dict] = field(default_factory=list)
 
 
@@ -32,6 +33,11 @@ class RuntimeState:
     raids_target: int = 0
     current_turn: int = 0
     turn_target: int = 0
+    current_raid_name: str = ""
+    current_raid_thumbnail: str = ""
+    current_raid_id: str = ""
+    boss_hp_at_entry: float = 0.0
+    task_start_time: float = 0.0
 
 
 class ConfigManager:
@@ -55,6 +61,7 @@ class ConfigManager:
         self._runtime_state = RuntimeState()
         self._initialized = True
 
+    # --- Runtime State (thread-safe, UI-visible) ---
     # --- Runtime State (thread-safe, UI-visible) ---
     @property
     def is_running(self) -> bool:
@@ -126,6 +133,46 @@ class ConfigManager:
         with self._runtime_lock:
             self._runtime_state.turn_target = value
 
+    @property
+    def current_raid_name(self) -> str:
+        with self._runtime_lock:
+            return self._runtime_state.current_raid_name
+
+    @current_raid_name.setter
+    def current_raid_name(self, value: str):
+        with self._runtime_lock:
+            self._runtime_state.current_raid_name = value
+
+    @property
+    def current_raid_id(self) -> str:
+        with self._runtime_lock:
+            return self._runtime_state.current_raid_id
+
+    @current_raid_id.setter
+    def current_raid_id(self, value: str):
+        with self._runtime_lock:
+            self._runtime_state.current_raid_id = value
+
+    @property
+    def boss_hp_at_entry(self) -> float:
+        with self._runtime_lock:
+            return self._runtime_state.boss_hp_at_entry
+
+    @boss_hp_at_entry.setter
+    def boss_hp_at_entry(self, value: float):
+        with self._runtime_lock:
+            self._runtime_state.boss_hp_at_entry = value
+
+    @property
+    def task_start_time(self) -> float:
+        with self._runtime_lock:
+            return self._runtime_state.task_start_time
+
+    @task_start_time.setter
+    def task_start_time(self, value: float):
+        with self._runtime_lock:
+            self._runtime_state.task_start_time = value
+
     def get_runtime_snapshot(self) -> dict:
         """Return a snapshot of runtime state for Flask."""
         with self._runtime_lock:
@@ -137,6 +184,10 @@ class ConfigManager:
                 "raids_target": self._runtime_state.raids_target,
                 "current_turn": self._runtime_state.current_turn,
                 "turn_target": self._runtime_state.turn_target,
+                "current_raid_name": self._runtime_state.current_raid_name,
+                "current_raid_id": self._runtime_state.current_raid_id,
+                "boss_hp_at_entry": self._runtime_state.boss_hp_at_entry,
+                "task_start_time": self._runtime_state.task_start_time,
             }
 
     # --- Battle Config (static settings) ---
@@ -154,6 +205,7 @@ class ConfigManager:
                 max_hp_threshold=self._battle_config.max_hp_threshold,
                 min_people=self._battle_config.min_people,
                 max_people=self._battle_config.max_people,
+                raid_amount=self._battle_config.raid_amount,
                 summon_priority=list(self._battle_config.summon_priority),
             )
 
@@ -182,6 +234,7 @@ class ConfigManager:
                 "max_hp_threshold": self._battle_config.max_hp_threshold,
                 "min_people": self._battle_config.min_people,
                 "max_people": self._battle_config.max_people,
+                "raid_amount": self._battle_config.raid_amount,
                 "summon_priority": list(self._battle_config.summon_priority),
             }
         with open(config_path, "w", encoding="utf-8") as f:

@@ -1,83 +1,292 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aureum Control Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 640px; margin: 0 auto; background: #f5f5f5; }
-        .card { background: white; border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px; }
-        .form-group { margin: 10px 0; }
-        label { display: inline-block; width: 150px; font-size: 14px; }
-        input[type="number"] { width: 80px; }
-        button { padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; }
-        #startBtn { background: #4CAF50; color: white; }
-        #startBtn:hover { background: #45a049; }
-        #startBtn:disabled { background: #9e9e9e; cursor: not-allowed; }
-        #stopBtn { background: #f44336; color: white; display: none; }
-        #stopBtn:hover { background: #da190b; }
-        #status { padding: 12px; background: #e3f2fd; margin: 10px 0; border-radius: 4px; font-weight: bold; display: flex; align-items: center; gap: 10px; }
-        .progress-container { width: 100%; background: #ddd; border-radius: 4px; margin: 10px 0; }
-        .progress-bar { height: 22px; background: #4CAF50; width: 0%; border-radius: 4px; transition: width 0.3s; text-align: center; color: white; line-height: 22px; font-size: 12px; }
-        .badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .badge.idle { background: #9e9e9e; color: white; }
-        .badge.running { background: #4CAF50; color: white; }
-        .stats { font-size: 14px; color: #555; margin-top: 5px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .circular-progress { transform: rotate(-90deg); transform-origin: 50% 50%; }
     </style>
 </head>
-<body>
-    <h1>Aureum Control Panel</h1>
-    <div class="card">
-        <div id="status">
-            Status: <span id="stateBadge" class="badge idle">Idle</span>
-            <span id="stateText">-</span>
+<body class="bg-slate-50 min-h-screen p-4 md:p-6">
+    <div class="max-w-6xl mx-auto space-y-4">
+        <!-- Card 1: Status Header -->
+        <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+            <div class="flex flex-col md:flex-row md:items-center gap-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span id="statusBadge" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5" id="statusDot"></span>
+                            Idle
+                        </span>
+                    </div>
+                    <h2 class="text-lg font-semibold text-slate-900" id="taskLabel">Ready to start</h2>
+                    <div class="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                        <div class="flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span id="startTime">--:--:--</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span id="elapsedTime">00:00:00</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 md:flex-shrink-0">
+                    <div class="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Amount</label>
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            <input type="number" id="raidAmount" class="w-16 bg-transparent text-lg font-semibold text-slate-900 outline-none" min="1" max="999">
+                        </div>
+                    </div>
+                    <button id="startBtn" onclick="startTask()" class="h-12 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Start
+                    </button>
+                    <button id="stopBtn" onclick="stopTask()" class="hidden h-12 px-6 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                        Stop
+                    </button>
+                </div>
+            </div>
+            <div class="mt-4">
+                <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div id="raidProgressBar" class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <span id="raidProgressText" class="text-sm font-semibold text-slate-900 w-12 text-right">0%</span>
+                </div>
+                <p id="raidProgressLabel" class="text-sm text-slate-600 mt-1">0 / 0 raid finished</p>
+            </div>
         </div>
-        <div class="progress-container">
-            <div id="progressBar" class="progress-bar">0 / 0</div>
+
+        <!-- Card 2: Current Raid -->
+        <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div class="flex flex-col md:flex-row">
+                <div class="w-full md:w-48 h-40 md:h-auto bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-16 h-16 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <div class="flex-1 p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Current Raid</span>
+                            <span id="raidStatusBadge" class="hidden inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                <svg class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                In progress
+                            </span>
+                        </div>
+                        <h3 id="currentRaidName" class="text-2xl font-bold text-slate-900">Waiting...</h3>
+                    </div>
+                    <div class="mt-3">
+                        <div class="flex items-center gap-2 mb-1">
+                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                            <span class="text-xs font-semibold text-slate-500">Boss HP at enter</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div id="bossHpBar" class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <span id="bossHpText" class="text-sm font-bold text-slate-900 w-12 text-right">0%</span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Config</span>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span id="badgeRefresh" class="hidden inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                Refresh
+                            </span>
+                            <span id="badgeUntilFinish" class="hidden inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                Until Finish
+                            </span>
+                            <span id="badgeTriggerSkip" class="hidden inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                Trigger Skip
+                            </span>
+                            <span id="badgePreFa" class="hidden inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                Pre-emptive Auto
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full md:w-56 border-t md:border-t-0 md:border-l border-slate-200 bg-slate-50 p-5 flex flex-col items-center justify-center flex-shrink-0">
+                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Raid Progress</span>
+                    <div class="relative w-28 h-28">
+                        <svg class="w-full h-full circular-progress" viewBox="0 0 36 36">
+                            <path class="text-slate-200" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+                            <path id="turnCircle" class="text-blue-600" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center">
+                            <span id="turnPercent" class="text-xl font-bold text-slate-900">0%</span>
+                            <span id="turnLabel" class="text-xs text-slate-500">0/0 Turn</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="stats">
-            Turn: <span id="turnDisplay">0 / 0</span>
-        </div>
-        <div style="margin-top: 15px;">
-            <button id="startBtn" onclick="startTask()" disabled>Initializing...</button>
-            <button id="stopBtn" onclick="stopTask()">Stop</button>
+
+        <!-- Card 3: Configuration -->
+        <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
+            <!-- Tabs -->
+            <div class="flex items-center gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
+                <button onclick="switchTab('raid')" id="tab-raid" class="tab-btn px-4 py-2.5 text-sm font-medium text-blue-600 border-b-2 border-blue-600 flex items-center gap-2 whitespace-nowrap">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                    Raid
+                </button>
+                <button onclick="switchTab('quest')" id="tab-quest" class="tab-btn px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Quest
+                </button>
+                <button onclick="switchTab('event')" id="tab-event" class="tab-btn px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    Event
+                </button>
+                <button onclick="switchTab('log')" id="tab-log" class="tab-btn px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                    Log
+                </button>
+            </div>
+
+            <!-- Raid Tab -->
+            <div id="content-raid" class="tab-content">
+                <div class="space-y-6">
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Raid Config</h4>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Turns</label>
+                            <input type="number" id="turn" min="1" max="100" class="w-full md:w-1/3 h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g. 50">
+                            <p class="text-xs text-slate-500 mt-1">Maximum number of turns to execute</p>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-semibold text-slate-900">Refresh</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="refresh" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-slate-500">Reload state between turns</p>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-semibold text-slate-900">Until finish</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="until_finish" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-slate-500">Run continuously until task completes</p>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-semibold text-slate-900">Trigger skip</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="trigger_skip" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-slate-500">Allow skipping non-critical triggers</p>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-semibold text-slate-900">Pre-emptive auto</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="pre_fa" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-slate-500">Automatically pre-empt blocked actions</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Timing & Thresholds</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-semibold text-slate-900">Think time</span>
+                                    <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">ms</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="think_time_min" step="0.1" class="h-12 w-full px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Min">
+                                    <span class="text-sm font-bold text-slate-500">to</span>
+                                    <input type="number" id="think_time_max" step="0.1" class="h-12 w-full px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Max">
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-semibold text-slate-900">Players</span>
+                                    <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">count</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="min_people" class="h-12 w-full px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Min">
+                                    <span class="text-sm font-bold text-slate-500">to</span>
+                                    <input type="number" id="max_people" class="h-12 w-full px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Max">
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-semibold text-slate-900">HP threshold</span>
+                                    <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">%</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="min_hp_threshold" min="0" max="100" class="h-12 w-full px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0">
+                                    <span class="text-sm font-bold text-slate-500">to</span>
+                                    <input type="number" id="max_hp_threshold" min="0" max="100" class="h-12 w-full px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="100">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                        <button onclick="resetConfig()" class="h-11 px-5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">Reset</button>
+                        <button onclick="saveConfig()" class="h-11 px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-medium text-white flex items-center gap-2 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                            Save configuration
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quest Tab -->
+            <div id="content-quest" class="tab-content hidden">
+                <div class="flex flex-col items-center justify-center py-16 text-slate-400">
+                    <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    <p class="text-lg font-medium">Quest automation coming soon</p>
+                </div>
+            </div>
+
+            <!-- Event Tab -->
+            <div id="content-event" class="tab-content hidden">
+                <div class="flex flex-col items-center justify-center py-16 text-slate-400">
+                    <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    <p class="text-lg font-medium">Event automation coming soon</p>
+                </div>
+            </div>
+
+            <!-- Log Tab -->
+            <div id="content-log" class="tab-content hidden">
+                <div class="flex flex-col items-center justify-center py-16 text-slate-400">
+                    <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <p class="text-lg font-medium">Battle log coming soon</p>
+                </div>
+            </div>
         </div>
     </div>
-    <div class="card">
-        <h3>Battle Parameters</h3>
-        <div class="form-group">
-            <label>Task:</label>
-            <select id="taskType">
-                <option value="raid">Raid</option>
-                <option value="quest">Quest</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Turns:</label>
-            <input type="number" id="turn" min="1" max="100">
-        </div>
-        <div class="form-group">
-            <label>Refresh:</label>
-            <input type="checkbox" id="refresh">
-        </div>
-        <div class="form-group">
-            <label>Until Finish:</label>
-            <input type="checkbox" id="until_finish">
-        </div>
-        <div class="form-group">
-            <label>Trigger Skip:</label>
-            <input type="checkbox" id="trigger_skip">
-        </div>
-        <div class="form-group">
-            <label>Think Time (min):</label>
-            <input type="number" id="think_time_min" step="0.1">
-        </div>
-        <div class="form-group">
-            <label>Think Time (max):</label>
-            <input type="number" id="think_time_max" step="0.1">
-        </div>
-        <button onclick="saveConfig()">Save Config</button>
-    </div>
+
     <script>
         let evtSource = null;
+        let taskStartTime = 0;
+        let elapsedInterval = null;
+
         function connectSSE() {
             if (evtSource) evtSource.close();
             evtSource = new EventSource('/api/events');
@@ -94,65 +303,153 @@
                 setTimeout(connectSSE, 2000);
             };
         }
+
         function updateUI(data) {
             const isRunning = data.is_running;
-            const badge = document.getElementById('stateBadge');
-            const stateText = document.getElementById('stateText');
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
+            const statusBadge = document.getElementById('statusBadge');
+            const statusDot = document.getElementById('statusDot');
+            const taskLabel = document.getElementById('taskLabel');
+            const raidStatusBadge = document.getElementById('raidStatusBadge');
+
             if (isRunning) {
-                badge.className = 'badge running';
-                badge.textContent = 'Running';
-                startBtn.style.display = 'none';
-                stopBtn.style.display = 'inline-block';
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                statusBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-800';
+                statusDot.className = 'w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5';
+                statusBadge.innerHTML = '<span class="' + statusDot.className + '" id="statusDot"></span>Running';
+                taskLabel.textContent = 'Raid Task - ' + (data.current_state || 'In Progress');
+                raidStatusBadge.classList.remove('hidden');
             } else {
-                badge.className = 'badge idle';
-                badge.textContent = 'Idle';
-                startBtn.style.display = 'inline-block';
-                stopBtn.style.display = 'none';
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                statusBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800';
+                statusDot.className = 'w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5';
+                statusBadge.innerHTML = '<span class="' + statusDot.className + '" id="statusDot"></span>Idle';
+                taskLabel.textContent = 'Ready to start';
+                raidStatusBadge.classList.add('hidden');
             }
-            stateText.textContent = data.current_state ? `(${data.current_state})` : '';
+
+            // Raid progress
             const raidsCompleted = data.raids_completed || 0;
             const raidsTarget = data.raids_target || 0;
             const pct = raidsTarget > 0 ? Math.round((raidsCompleted / raidsTarget) * 100) : 0;
-            const bar = document.getElementById('progressBar');
-            bar.style.width = pct + '%';
-            bar.textContent = raidsTarget > 0 ? `${raidsCompleted} / ${raidsTarget}` : `${raidsCompleted}`;
-            document.getElementById('turnDisplay').textContent = `${data.current_turn || 0} / ${data.turn_target || 0}`;
+            document.getElementById('raidProgressBar').style.width = pct + '%';
+            document.getElementById('raidProgressText').textContent = pct + '%';
+            document.getElementById('raidProgressLabel').textContent = raidsTarget > 0 ? `${raidsCompleted} / ${raidsTarget} raid finished` : `${raidsCompleted} raid finished`;
+
+            // Current raid
+            document.getElementById('currentRaidName').textContent = data.current_raid_name || 'Waiting...';
+            const bossHp = data.boss_hp_at_entry || 0;
+            document.getElementById('bossHpBar').style.width = bossHp + '%';
+            document.getElementById('bossHpText').textContent = bossHp + '%';
+
+            // Turn circle
+            const currentTurn = data.current_turn || 0;
+            const turnTarget = data.turn_target || 0;
+            const turnPct = turnTarget > 0 ? Math.round((currentTurn / turnTarget) * 100) : 0;
+            document.getElementById('turnCircle').setAttribute('stroke-dasharray', `${turnPct}, 100`);
+            document.getElementById('turnPercent').textContent = turnPct + '%';
+            document.getElementById('turnLabel').textContent = `${currentTurn}/${turnTarget} Turn`;
+
+            // Timer
+            if (data.task_start_time && data.task_start_time > 0) {
+                taskStartTime = data.task_start_time;
+                const startDate = new Date(taskStartTime * 1000);
+                document.getElementById('startTime').textContent = startDate.toLocaleTimeString();
+                if (!elapsedInterval) {
+                    elapsedInterval = setInterval(updateElapsed, 1000);
+                }
+            } else {
+                taskStartTime = 0;
+                document.getElementById('startTime').textContent = '--:--:--';
+                document.getElementById('elapsedTime').textContent = '00:00:00';
+                if (elapsedInterval) {
+                    clearInterval(elapsedInterval);
+                    elapsedInterval = null;
+                }
+            }
+
+            // Active config badges (read from DOM since they are static per run)
+            document.getElementById('badgeRefresh').classList.toggle('hidden', !document.getElementById('refresh').checked);
+            document.getElementById('badgeUntilFinish').classList.toggle('hidden', !document.getElementById('until_finish').checked);
+            document.getElementById('badgeTriggerSkip').classList.toggle('hidden', !document.getElementById('trigger_skip').checked);
+            document.getElementById('badgePreFa').classList.toggle('hidden', !document.getElementById('pre_fa').checked);
         }
+
+        function updateElapsed() {
+            if (!taskStartTime) return;
+            const elapsed = Math.floor(Date.now() / 1000) - taskStartTime;
+            const h = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+            const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+            const s = (elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('elapsedTime').textContent = `${h}:${m}:${s}`;
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                btn.classList.add('text-slate-500');
+            });
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+            const activeBtn = document.getElementById('tab-' + tab);
+            activeBtn.classList.remove('text-slate-500');
+            activeBtn.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+            document.getElementById('content-' + tab).classList.remove('hidden');
+        }
+
         function loadConfig() {
             fetch('/api/config')
                 .then(r => r.json())
                 .then(data => {
+                    document.getElementById('raidAmount').value = data.raid_amount || 10;
                     document.getElementById('turn').value = data.turn;
                     document.getElementById('refresh').checked = data.refresh;
                     document.getElementById('until_finish').checked = data.until_finish;
                     document.getElementById('trigger_skip').checked = data.trigger_skip;
+                    document.getElementById('pre_fa').checked = data.pre_fa || false;
                     document.getElementById('think_time_min').value = data.think_time_min;
                     document.getElementById('think_time_max').value = data.think_time_max;
+                    document.getElementById('min_people').value = data.min_people;
+                    document.getElementById('max_people').value = data.max_people;
+                    document.getElementById('min_hp_threshold').value = data.min_hp_threshold;
+                    document.getElementById('max_hp_threshold').value = data.max_hp_threshold;
                     updateUI(data);
                 });
         }
+
         function saveConfig() {
+            const payload = {
+                raid_amount: parseInt(document.getElementById('raidAmount').value) || 10,
+                turn: parseInt(document.getElementById('turn').value),
+                refresh: document.getElementById('refresh').checked,
+                until_finish: document.getElementById('until_finish').checked,
+                trigger_skip: document.getElementById('trigger_skip').checked,
+                pre_fa: document.getElementById('pre_fa').checked,
+                think_time_min: parseFloat(document.getElementById('think_time_min').value),
+                think_time_max: parseFloat(document.getElementById('think_time_max').value),
+                min_people: parseInt(document.getElementById('min_people').value),
+                max_people: parseInt(document.getElementById('max_people').value),
+                min_hp_threshold: parseInt(document.getElementById('min_hp_threshold').value),
+                max_hp_threshold: parseInt(document.getElementById('max_hp_threshold').value),
+            };
             fetch('/api/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    turn: parseInt(document.getElementById('turn').value),
-                    refresh: document.getElementById('refresh').checked,
-                    until_finish: document.getElementById('until_finish').checked,
-                    trigger_skip: document.getElementById('trigger_skip').checked,
-                    think_time_min: parseFloat(document.getElementById('think_time_min').value),
-                    think_time_max: parseFloat(document.getElementById('think_time_max').value)
-                })
+                body: JSON.stringify(payload)
             }).then(() => alert('Saved!'));
         }
+
+        function resetConfig() {
+            loadConfig();
+        }
+
         function startTask() {
-            const taskType = document.getElementById('taskType').value;
             fetch('/api/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({task_type: taskType})
+                body: JSON.stringify({task_type: 'raid'})
             })
             .then(r => r.json())
             .then(data => {
@@ -161,12 +458,13 @@
                 }
             });
         }
+
         function stopTask() {
             fetch('/api/stop', {method: 'POST'})
                 .then(r => r.json())
                 .then(() => console.log('Stop requested'));
         }
-        let wasReady = false;
+
         function checkReady() {
             fetch('/api/status')
                 .then(r => r.json())
@@ -174,18 +472,17 @@
                     const startBtn = document.getElementById('startBtn');
                     if (!data.ready) {
                         startBtn.disabled = true;
-                        startBtn.textContent = data.error ? 'Init Error' : 'Initializing...';
-                        wasReady = false;
+                        startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = '<span class="animate-pulse">Initializing...</span>';
                     } else {
                         startBtn.disabled = false;
-                        startBtn.textContent = 'Start';
-                        if (!wasReady) {
-                            loadConfig();   // <-- FIX: fetch real default.json values now
-                            wasReady = true;
-                        }
+                        startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        startBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Start`;
                     }
                 });
         }
+
+        loadConfig();
         connectSSE();
         setInterval(checkReady, 2000);
     </script>

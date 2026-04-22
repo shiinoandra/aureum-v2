@@ -5,6 +5,7 @@ from task_executor import TaskExecutor
 from context import ActionContext, ActionRegistry
 from pathlib import Path
 import threading
+import time
 
 # Import actions to trigger @ActionRegistry.register decorators
 from actions import (
@@ -70,6 +71,14 @@ class CoreEngine:
         """
         print("[*] Task loop started")
         self.config.is_running = True
+        battle_cfg = self.config.get_battle_config()
+        if battle_cfg.raid_amount > 0:
+            self.config.raids_target = battle_cfg.raid_amount
+        else:
+            self.config.raids_target = self._current_task.get(
+                "exit_condition", {}
+            ).get("value", 0)
+
         while self._running and self._current_task:
             try:
                 # State detection & runtime stats
@@ -101,6 +110,7 @@ class CoreEngine:
 
         self.config.is_running = False
         self._running = False
+        self.config.task_start_time = 0
         print("[*] Task loop ended")
 
     def _main_loop(self):

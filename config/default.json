@@ -5,6 +5,12 @@
   "trigger_skip": false,
   "think_time_min": 0.2,
   "think_time_max": 0.5,
+  "pre_fa": false,
+  "min_hp_threshold": 60,
+  "max_hp_threshold": 100,
+  "min_people": 1,
+  "max_people": 30,
+  "raid_amount": 10,
   "summon_priority": [
     {"name": "Grand Order", "level": "Lvl 200"},
     {"name": "Huanglong", "level": "Lvl 100"},

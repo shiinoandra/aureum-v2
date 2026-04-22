@@ -5,25 +5,26 @@ import json
 import queue
 import threading
 import time
-import undetected_chromedriver as uc  # Alternative to regular Chrome driver
+import undetected_chromedriver as uc
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, _project_root)
 sys.path.insert(0, os.path.join(_project_root, 'src'))
-# In ui/app.py, after sys.path setup:
 from config_manager import ConfigManager
 from navigator import Navigator
 from core_engine import CoreEngine
 from state_machine import detect_state
 app = Flask(__name__)
 config = ConfigManager()
-# --- Globals ---
 engine = None
 engine_ready = False
 engine_error = None
 announcer = None
+
+
 class MessageAnnouncer:
     def __init__(self):
         self.listeners = []
+
     def listen(self):
         q = queue.Queue(maxsize=10)
         self.listeners.append(q)
@@ -33,13 +34,18 @@ class MessageAnnouncer:
                 yield msg
         finally:
             self.listeners.remove(q)
+
     def announce(self, msg):
         for i in reversed(range(len(self.listeners))):
             try:
                 self.listeners[i].put_nowait(msg)
             except queue.Full:
                 del self.listeners[i]
+
+
 announcer = MessageAnnouncer()
+
+
 def create_browser():
     chrome_options = uc.ChromeOptions()
     chrome_options.add_argument("--start-maximized")
@@ -53,6 +59,8 @@ def create_browser():
         options=chrome_options, user_data_dir=user_data_dir, version_main=146
     )
     return driver
+
+
 def init_engine():
     global engine, engine_ready, engine_error
     try:
@@ -64,7 +72,6 @@ def init_engine():
         config_path = project_root / "config" / "default.json"
         if config_path.exists():
             config.load_default_config(config_path)
-        # Start background progress pusher
         threading.Thread(target=_progress_monitor, daemon=True).start()
         engine_ready = True
         print("[*] Engine initialized and ready")
@@ -73,6 +80,8 @@ def init_engine():
         print(f"[!] Engine init failed: {e}")
         import traceback
         traceback.print_exc()
+
+
 def _progress_monitor():
     """Push progress updates via SSE every 500ms."""
     while True:
@@ -85,15 +94,24 @@ def _progress_monitor():
                 "raids_target": runtime["raids_target"],
                 "current_turn": runtime["current_turn"],
                 "turn_target": runtime["turn_target"],
+                "current_raid_name": runtime["current_raid_name"],
+                "boss_hp_at_entry": runtime["boss_hp_at_entry"],
+                "task_start_time": runtime["task_start_time"],
             }
             announcer.announce(json.dumps(payload))
         time.sleep(0.5)
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
 @app.route("/api/status", methods=["GET"])
 def get_status():
     return jsonify({"ready": engine_ready, "error": engine_error})
+
+
 @app.route("/api/config", methods=["GET"])
 def get_config():
     battle_config = config.get_battle_config()
@@ -106,6 +124,12 @@ def get_config():
             "trigger_skip": battle_config.trigger_skip,
             "think_time_min": battle_config.think_time_min,
             "think_time_max": battle_config.think_time_max,
+            "pre_fa": battle_config.pre_fa,
+            "min_hp_threshold": battle_config.min_hp_threshold,
+            "max_hp_threshold": battle_config.max_hp_threshold,
+            "min_people": battle_config.min_people,
+            "max_people": battle_config.max_people,
+            "raid_amount": battle_config.raid_amount,
             "summon_priority": battle_config.summon_priority,
             "current_state": runtime["current_state"],
             "is_running": runtime["is_running"],
@@ -113,6 +137,8 @@ def get_config():
             "raids_target": runtime["raids_target"],
         }
     )
+
+
 @app.route("/api/config", methods=["POST"])
 def update_config():
     data = request.json
@@ -124,6 +150,8 @@ def update_config():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "ok", "updated": data})
+
+
 @app.route("/api/start", methods=["POST"])
 def start_task():
     global engine_ready
@@ -140,11 +168,15 @@ def start_task():
         ), 404
     engine.start_task(task_path)
     return jsonify({"status": "started", "task_type": task_type})
+
+
 @app.route("/api/stop", methods=["POST"])
 def stop_task():
     if engine:
         engine.stop()
     return jsonify({"status": "stopped"})
+
+
 @app.route("/api/progress", methods=["GET"])
 def get_progress():
     runtime = config.get_runtime_snapshot()
@@ -156,15 +188,21 @@ def get_progress():
             "raids_target": runtime["raids_target"],
             "current_turn": runtime["current_turn"],
             "turn_target": runtime["turn_target"],
+            "current_raid_name": runtime["current_raid_name"],
+            "boss_hp_at_entry": runtime["boss_hp_at_entry"],
+            "task_start_time": runtime["task_start_time"],
         }
     )
+
+
 @app.route("/api/events")
 def sse():
     def stream():
         for msg in announcer.listen():
             yield f"data: {msg}\n\n"
     return Response(stream(), mimetype="text/event-stream")
+
+
 if __name__ == "__main__":
-    # Initialize browser in background so Flask can start serving immediately
     threading.Thread(target=init_engine, daemon=True).start()
     app.run(debug=True, host="127.0.0.1", port=5000, threaded=True, use_reloader=False)

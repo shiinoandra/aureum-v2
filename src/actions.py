@@ -15,7 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-from context import ActionContext,ActionRegistry
+from context import ActionContext, ActionRegistry
 from navigator import Navigator
 from config_manager import ConfigManager
 
@@ -23,6 +23,7 @@ from config_manager import ConfigManager
 # =============================================================================
 # Popup Handling (Internal Helpers)
 # =============================================================================
+
 
 def _detect_popup_type(popup_text: str) -> str:
     """Detect popup type from text content."""
@@ -51,48 +52,49 @@ def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
         ".pop-usual.pop-result-assist-raid.pop-show",
         ".pop-usual.pop-rematch-fail.pop-show",
     ]
-    
+
     for sel in selectors:
         try:
             popup = nav.driver.find_element(By.CSS_SELECTOR, sel)
             break
         except NoSuchElementException:
             pass
-    
+
     # Fallback: generic .pop-usual but with text filter
     if not popup:
         try:
             popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop-usual.pop-show")
         except NoSuchElementException:
             return None
-    
+
     # Get text
     try:
         popup_text = popup.find_element(By.CSS_SELECTOR, "#popup-body").text.strip()
     except:
         popup_text = popup.text.strip()
-    
+
     # Ignore victory/reward popups
-    victory_keywords = ["exp", "Prestige", "Bonus", 
-                        "items were used", "battle log"]
+    victory_keywords = ["exp", "Prestige", "Bonus", "items were used", "battle log"]
     if any(k in popup_text.lower() for k in victory_keywords):
         return None
-    
+
     print(f"[!] Popup detected")
     popup_type = _detect_popup_type(popup_text)
-    
+
     try:
         ok_btn = popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
         nav.click_element(ok_btn)
         nav.wait(1.5)
     except Exception:
         print("[!] Could not find OK button to close popup")
-    
+
     return popup_type
+
 
 # =============================================================================
 # Raid Actions
 # =============================================================================
+
 
 @ActionRegistry.register("select_raid")
 def action_select_raid(params, context: ActionContext):
@@ -141,16 +143,22 @@ def action_select_raid(params, context: ActionContext):
             # Fallback name if data-chapter-name is empty
             if not raid_info["name"]:
                 try:
-                    raid_info["name"] = raid.find_element(By.CSS_SELECTOR, ".txt-raid-name").text.strip()
+                    raid_info["name"] = raid.find_element(
+                        By.CSS_SELECTOR, ".txt-raid-name"
+                    ).text.strip()
                 except:
                     pass
 
             # HP
-            hp_style = raid.find_element(By.CSS_SELECTOR, ".prt-raid-gauge-inner").get_attribute("style")
+            hp_style = raid.find_element(
+                By.CSS_SELECTOR, ".prt-raid-gauge-inner"
+            ).get_attribute("style")
             raid_info["hp_percent"] = float(hp_style.split("width:")[1].split("%")[0])
             # Player count: "5/30" → [5, 30]
             try:
-                flees_text = raid.find_element(By.CSS_SELECTOR, ".prt-flees-in").text.strip()
+                flees_text = raid.find_element(
+                    By.CSS_SELECTOR, ".prt-flees-in"
+                ).text.strip()
                 current_str, max_str = flees_text.split("/")
                 raid_info["players_current"] = int(current_str)
                 raid_info["players_max"] = int(max_str)
@@ -160,10 +168,18 @@ def action_select_raid(params, context: ActionContext):
                 raid_info["players_max"] = 30
 
             # HP range
-            if not (battle_config.min_hp_threshold <= raid_info["hp_percent"] <= battle_config.max_hp_threshold):
+            if not (
+                battle_config.min_hp_threshold
+                <= raid_info["hp_percent"]
+                <= battle_config.max_hp_threshold
+            ):
                 continue
             # Player count range
-            if not (battle_config.min_people <= raid_info["players_current"] <= battle_config.max_people):
+            if not (
+                battle_config.min_people
+                <= raid_info["players_current"]
+                <= battle_config.max_people
+            ):
                 continue
 
             eligible_raids.append(raid_info)
@@ -177,10 +193,17 @@ def action_select_raid(params, context: ActionContext):
 
     # Select random eligible raid
     target = random.choice(eligible_raids)
-    print(f"[i] Selected raid with {target['hp_percent']}% HP and {target['players_current']} player")
+    print(
+        f"[i] Selected raid with {target['hp_percent']}% HP and {target['players_current']} player"
+    )
+
+    # Publish raid metadata to runtime state
+    context.config.current_raid_name = target.get("name", "Unknown Raid")
+    context.config.current_raid_id = target.get("raid_id", "")
+    context.config.boss_hp_at_entry = target.get("hp_percent", 0.0)
+
     nav.click_element(target["element"])
     return ActionContext.RESULT_SUCCESS
-
 
 
 @ActionRegistry.register("select_summon")
@@ -211,7 +234,10 @@ def action_select_summon(params, context: ActionContext):
         level = summon.get("level")
         if not name:
             continue
-        print(f"[i] Searching for summon: {name}" + (f" ({level})" if level else " (any level)"))
+        print(
+            f"[i] Searching for summon: {name}"
+            + (f" ({level})" if level else " (any level)")
+        )
         try:
             # Build XPath based on whether level is specified
             if level:
@@ -240,7 +266,9 @@ def action_select_summon(params, context: ActionContext):
     # Step 3: Fallback - select first summon in type0 tab
     print("[!] No preferred summons found — using first available summon.")
     try:
-        fallback_tab = nav.driver.find_element(By.CSS_SELECTOR, ".icon-supporter-type-7")
+        fallback_tab = nav.driver.find_element(
+            By.CSS_SELECTOR, ".icon-supporter-type-7"
+        )
         nav.click_element(fallback_tab)
         nav.wait(0.3, 0.5)
         first_summon = WebDriverWait(nav.driver, 2).until(
@@ -254,6 +282,7 @@ def action_select_summon(params, context: ActionContext):
     except Exception as e:
         print(f"[!!] Fallback summon selection failed: {e}")
         return ActionContext.RESULT_FAILED
+
 
 @ActionRegistry.register("join_battle")
 def action_join_battle(params, context: ActionContext):
@@ -274,30 +303,33 @@ def action_join_battle(params, context: ActionContext):
     return ActionContext.RESULT_FAILED
 
 
-
 @ActionRegistry.register("do_battle")
 def action_do_battle(params, context: ActionContext):
     nav = context.navigator
     config = context.config
     battle_config = config.get_battle_config()
-    
+
     # Pre-battle full auto (one-time, before loop)
     if battle_config.pre_fa:
         nav.click_onthespot()
-    
+
     # Initial battle UI wait
     try:
-        nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=10)
+        nav.wait_for_element(
+            By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=10
+        )
     except TimeoutException:
         return ActionContext.RESULT_FAILED
-    
+
     if battle_config.trigger_skip:
         nav.driver.refresh()
         try:
-            nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15)
+            nav.wait_for_element(
+                By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=15
+            )
         except TimeoutException:
             return ActionContext.RESULT_FAILED
-    
+
     current_turn = 1
     fullauto_clicked = 0
     battle_ended = False
@@ -305,9 +337,11 @@ def action_do_battle(params, context: ActionContext):
 
     start_time = time.time()
     while time.time() - start_time < 300:
-        
         context.config.current_turn = current_turn
-        if "#result_multi/" in nav.get_current_url() or "#result/" in nav.get_current_url():
+        if (
+            "#result_multi/" in nav.get_current_url()
+            or "#result/" in nav.get_current_url()
+        ):
             print("[→] Battle ended - detected result URL")
             battle_ended = True
 
@@ -316,19 +350,21 @@ def action_do_battle(params, context: ActionContext):
                 nav.click_element(click_target)
             context.config.raids_completed += 1
             context.config.battle_finished = True
-            #print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
+            # print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
-        
+
         # === 2. Turn limit reached? ===
         if not battle_config.until_finish and current_turn > battle_config.turn:
             context.config.raids_completed += 1
             print(f"[→] Turn limit reached ({battle_config.turn}).")
             return ActionContext.RESULT_SUCCESS
-        
+
         # === 3. Click full auto if not yet clicked this turn ===
         if fullauto_clicked == 0:
             try:
-                fullauto_btn = nav.wait_for_clickable(By.CSS_SELECTOR, ".btn-auto", timeout=5)
+                fullauto_btn = nav.wait_for_clickable(
+                    By.CSS_SELECTOR, ".btn-auto", timeout=5
+                )
                 nav.click_element(fullauto_btn)
                 nav._move_away(fullauto_btn)
                 print("[⚙] Full Auto clicked")
@@ -338,25 +374,32 @@ def action_do_battle(params, context: ActionContext):
                 print("[!] Full Auto not found, retrying...")
                 nav.wait(0.2, 0.3)
                 continue
-            
+
             # === 4. CRITICAL: Check attack button ON THE SAME PAGE (before refresh) ===
             try:
-                atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=2)
+                atk_btn = nav.wait_for_element(
+                    By.CSS_SELECTOR, ".btn-attack-start", timeout=2
+                )
                 if "display-off" in atk_btn.get_attribute("class"):
                     print(f"[i] Turn {current_turn} completed")
                     current_turn += 1
                     fullauto_clicked = 0
                     nav.wait(0.3, 0.5)
-                    
-                    if not battle_config.until_finish and current_turn > battle_config.turn:
+
+                    if (
+                        not battle_config.until_finish
+                        and current_turn > battle_config.turn
+                    ):
                         context.config.raids_completed += 1
-                        #print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
+                        # print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
                         return ActionContext.RESULT_SUCCESS
-                    
+
                     # Refresh to skip attack animation / reset UI for next turn
                     nav.driver.refresh()
                     try:
-                        nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5)
+                        nav.wait_for_element(
+                            By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
+                        )
                         print("[✓] Battle UI restored after turn refresh")
                     except TimeoutException:
                         print("[×] Battle UI did not return after turn refresh")
@@ -365,51 +408,60 @@ def action_do_battle(params, context: ActionContext):
             except TimeoutException:
                 # Attack button not found - might be battle ended or loading
                 pass
-            
+
             # === 5. refresh=true: refresh to skip skill animations ===
             if battle_config.refresh:
                 print("[i] Refreshing to skip skill animations...")
                 fullauto_clicked = 0  # Page reloads, need to click again
                 nav.driver.refresh()
                 try:
-                    nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5)
+                    nav.wait_for_element(
+                        By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
+                    )
                     print("[✓] Battle UI restored after animation refresh")
                 except TimeoutException:
                     print("[×] Battle UI did not return after animation refresh")
                 continue
-            
+
             # === 6. refresh=false: let animations play out ===
             else:
                 nav.wait(0.2, 0.3)
                 continue
-        
+
         # === 7. refresh=false path: fullauto_clicked=1, wait for attack to process ===
         else:
             try:
-                atk_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start", timeout=5)
+                atk_btn = nav.wait_for_element(
+                    By.CSS_SELECTOR, ".btn-attack-start", timeout=5
+                )
                 if "display-off" in atk_btn.get_attribute("class"):
                     print(f"[i] Turn {current_turn} completed")
                     current_turn += 1
                     fullauto_clicked = 0
                     nav.wait(0.3, 0.5)
-                    
-                    if not battle_config.until_finish and current_turn > battle_config.turn:
+
+                    if (
+                        not battle_config.until_finish
+                        and current_turn > battle_config.turn
+                    ):
                         context.config.raids_completed += 1
-                        #print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
+                        # print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
                         return ActionContext.RESULT_SUCCESS
 
                     nav.driver.refresh()
                     try:
-                        nav.wait_for_element(By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5)
+                        nav.wait_for_element(
+                            By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
+                        )
                         print("[✓] Battle UI restored after turn refresh")
                     except TimeoutException:
                         print("[×] Battle UI did not return after turn refresh")
                     continue
             except TimeoutException:
                 nav.wait(0.3, 0.5)
-                pass    
-        
-        #check A
+                pass
+
+        # check A
         if not battle_ended:
             try:
                 result_cnt = nav.driver.find_element(By.CSS_SELECTOR, ".prt-result-cnt")
@@ -418,44 +470,43 @@ def action_do_battle(params, context: ActionContext):
                     battle_ended = True
             except NoSuchElementException:
                 pass
-        
-        #check B
-        if not battle_ended:
 
+        # check B
+        if not battle_ended:
             try:
                 click_target = WebDriverWait(nav.driver, 1).until(
-                    EC.element_to_be_clickable((
-                        By.XPATH,
-                        "//div[contains(@class, 'pop-exp')]//div[contains(@class, 'btn-usual-ok')]"
-                    ))
+                    EC.element_to_be_clickable(
+                        (
+                            By.XPATH,
+                            "//div[contains(@class, 'pop-exp')]//div[contains(@class, 'btn-usual-ok')]",
+                        )
+                    )
                 )
                 print("[→] Battle ended - detected victory popup")
                 battle_ended = True
             except TimeoutException:
                 pass
-        
-        #check C
-        if not battle_ended:
 
+        # check C
+        if not battle_ended:
             try:
                 click_target = WebDriverWait(nav.driver, 1).until(
-                    EC.element_to_be_clickable((
-                        By.CSS_SELECTOR,
-                        ".pop-usual.pop-rematch-fail .btn-usual-ok"
-                    ))
+                    EC.element_to_be_clickable(
+                        (By.CSS_SELECTOR, ".pop-usual.pop-rematch-fail .btn-usual-ok")
+                    )
                 )
-                popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop-usual.pop-rematch-fail")
+                popup = nav.driver.find_element(
+                    By.CSS_SELECTOR, ".pop-usual.pop-rematch-fail"
+                )
                 if "battle has ended" in popup.text.lower():
                     print("[→] Battle ended - detected popup")
                     battle_ended = True
             except TimeoutException:
                 pass
-     
-        
+
         nav.wait(0.2, 0.3)
         continue
-        
-    
+
     print("[!] Battle timeout reached")
     return ActionContext.RESULT_FAILED
 
@@ -473,7 +524,9 @@ def action_refresh_raid_list(params, context: ActionContext):
         nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
 
     try:
-        refresh_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-search-refresh", timeout=2)
+        refresh_btn = nav.wait_for_element(
+            By.CSS_SELECTOR, ".btn-search-refresh", timeout=2
+        )
         nav.click_element(refresh_btn)
         print("[i] Raid list refreshed")
         return ActionContext.RESULT_SUCCESS
@@ -492,7 +545,9 @@ def action_clean_raid_queue(params, context: ActionContext):
     nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
 
     try:
-        pending_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-unconfirmed-result", timeout=2)
+        pending_btn = nav.wait_for_element(
+            By.CSS_SELECTOR, ".btn-unconfirmed-result", timeout=2
+        )
         nav.click_element(pending_btn)
         nav.wait_for_element(By.ID, "prt-unclaimed-list", timeout=5)
 
@@ -507,29 +562,36 @@ def action_clean_raid_queue(params, context: ActionContext):
                 break
 
             # Select first raid in list
-            raid = raids[random.randint(0,len(raids)-1)]
+            raid = raids[random.randint(0, len(raids) - 1)]
             raid_id = raid.get_attribute("data-raid-id")
             print(f"[i] Processing pending raid {raid_id}")
             nav.click_element(raid)
 
             # Claim its rewards
             try:
-                ok_btn = nav.wait_for_element(By.CSS_SELECTOR, ".btn-usual-ok", timeout=2)
-                time.sleep(random.uniform(0.2,0.3))
-                if(random.uniform(0,1)>0.5):
+                ok_btn = nav.wait_for_element(
+                    By.CSS_SELECTOR, ".btn-usual-ok", timeout=2
+                )
+                time.sleep(random.uniform(0.2, 0.3))
+                if random.uniform(0, 1) > 0.5:
                     nav.click_element(ok_btn)
                 nav.wait(0.5)
             except:
                 pass
 
             # Go back to unclaimed list
-            nav.driver.get("https://game.granbluefantasy.jp/#quest/assist/unclaimed/0/0")
-            nav.wait_for_element(By.CSS_SELECTOR, "#prt-unclaimed-list .btn-multi-raid.lis-raid", timeout=2)
+            nav.driver.get(
+                "https://game.granbluefantasy.jp/#quest/assist/unclaimed/0/0"
+            )
+            nav.wait_for_element(
+                By.CSS_SELECTOR,
+                "#prt-unclaimed-list .btn-multi-raid.lis-raid",
+                timeout=2,
+            )
 
         print("[✓] Raid queue cleaned")
         nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
         return ActionContext.RESULT_SUCCESS
-        
 
     except TimeoutException:
         print("[i] No pending battles button found")
@@ -539,7 +601,6 @@ def action_clean_raid_queue(params, context: ActionContext):
     except Exception as e:
         print(f"[!!] Error cleaning raid queue: {e}")
         return ActionContext.RESULT_FAILED
-
 
 
 @ActionRegistry.register("go_to_raid_list")
@@ -570,6 +631,7 @@ def action_go_to_main_menu(params, context: ActionContext):
 # Internal Helpers
 # =============================================================================
 
+
 def _perform_browse_scrolling(nav: Navigator):
     """Human-like browsing scroll behavior."""
     from selenium.webdriver.common.action_chains import ActionChains
@@ -589,6 +651,7 @@ def _perform_browse_scrolling(nav: Navigator):
         time.sleep(random.uniform(0.4, 1.0))
     return ActionContext.RESULT_SUCCESS
 
+
 def _find_support_tab_from_elem(nav: Navigator, support_elem):
     """
     Given a supporter summon element, find its corresponding tab button.
@@ -603,14 +666,14 @@ def _find_support_tab_from_elem(nav: Navigator, support_elem):
         if not match:
             print(f"[!] Could not detect type class from: {class_attr}")
             return None
-        
+
         support_type = int(match.group(1))
         type_map = {0: 7, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
         tab_index = type_map.get(support_type)
         if tab_index is None:
             print(f"[!] No matching tab for type {support_type}")
             return None
-        
+
         print(f"[i] Support type{support_type} → tab button type-{tab_index}")
         tab_selector = f".icon-supporter-type-{tab_index}"
         return nav.driver.find_element(By.CSS_SELECTOR, tab_selector)
