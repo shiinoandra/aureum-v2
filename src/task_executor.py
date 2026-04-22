@@ -43,8 +43,13 @@ class TaskExecutor:
             # Check popup before action
             popup_type = _check_and_handle_popup(self.navigator)
             if popup_type:
-                if not self._handle_popup_recovery(popup_type):
+                can_continue, redirect = self._handle_popup_recovery(popup_type)
+                if not can_continue:
                     return False
+                if redirect:
+                    print(f"[i] Popup recovery: redirecting to '{redirect}'")
+                    current_name = redirect
+                    continue
             
             # Get action and params
             action_def = action_map.get(current_name)
@@ -97,30 +102,30 @@ class TaskExecutor:
         if popup_type == "captcha":
             print("[!!!] CAPTCHA detected - stopping automation")
             self._running = False
-            return False
+            return False,None
         elif popup_type == "raid_full":
             print("[i] Raid full - will refresh and retry")
-            return True
+            return True,"refresh_raid_list"
         elif popup_type == "not_enough_ap":
             print("[i] Not enough AP - waiting to retry")
             time.sleep(random.uniform(10, 20))
-            return True
+            return True,"refresh_raid_list"
         elif popup_type == "three_raid":
             print("[i] Three raids limit - waiting before refreshing")
             time.sleep(random.uniform(5, 10))
-            return True
+            return True,"refresh_raid_list"
         elif popup_type == "toomuch_pending":
             print("[i] Too many pending - cleaning queue")
             clean_action = ActionRegistry.get("clean_raid_queue")
             if clean_action:
                 clean_action({}, self.context)
-            return True
+            return True,"refresh_raid_list"
         elif popup_type == "ended":
             print("[i] Raid already ended - skipping")
-            return True
+            return True,"select_raid"
         else:
             print(f"[i] Unknown popup: {popup_type}")
-            return True
+            return True,None
     
     def check_exit_condition(self, task: dict) -> bool:
         """Check if task exit condition is met."""

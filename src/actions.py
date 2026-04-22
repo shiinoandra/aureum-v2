@@ -49,23 +49,44 @@ def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
     Check for popup and handle it if present.
     Returns popup type if popup was shown, None otherwise.
     """
+    popup = None
+    
+    # Try error popup first
     try:
         popup = nav.driver.find_element(By.CSS_SELECTOR, ".common-pop-error.pop-show")
-        popup_text = popup.find_element(By.CSS_SELECTOR, "#popup-body").text.strip()
-        print(f"[!] Popup detected: '{popup_text}'")
-
-        popup_type = _detect_popup_type(popup_text)
-
+    except NoSuchElementException:
+        pass
+    
+    # Try result/assist popup (summon screen, etc.)
+    if not popup:
         try:
-            ok_btn = popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
-            nav.click_element(ok_btn)
-            nav.wait(1.5)
-        except Exception:
-            print("[!] Could not find OK button to close popup")
-
-        return popup_type
-    except:
+            popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop-usual.pop-show")
+        except NoSuchElementException:
+            pass
+    
+    if not popup:
         return None
+    
+    try:
+        popup_text = popup.find_element(By.CSS_SELECTOR, "#popup-body").text.strip()
+    except NoSuchElementException:
+        try:
+            # Fallback: some popups might not have #popup-body
+            popup_text = popup.text.strip()
+        except:
+            return None
+    
+    print(f"[!] Popup detected: '{popup_text}'")
+    popup_type = _detect_popup_type(popup_text)
+    
+    try:
+        ok_btn = popup.find_element(By.CSS_SELECTOR, ".btn-usual-ok")
+        nav.click_element(ok_btn)
+        nav.wait(1.5)
+    except Exception:
+        print("[!] Could not find OK button to close popup")
+    
+    return popup_type
 
 
 # =============================================================================
