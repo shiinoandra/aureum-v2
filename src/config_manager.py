@@ -27,7 +27,7 @@ class BattleConfig:
 class RuntimeState:
     is_running: bool = False
     current_state: State = State.IDLE
-    last_known__url: str = ""
+    last_known_url: str = ""
     raids_completed: int = 0
     raids_target: int = 0
     current_turn: int = 0
@@ -49,72 +49,83 @@ class ConfigManager:
     def __init__(self):
         if self._initialized:
             return
-        self._state_lock = Lock()
         self._config_lock = Lock()
-        self._current_state = State.IDLE
+        self._runtime_lock = Lock()
         self._battle_config = BattleConfig()
         self._runtime_state = RuntimeState()
         self._initialized = True
-
-
 
     # --- Runtime State (thread-safe, UI-visible) ---
     @property
     def is_running(self) -> bool:
         with self._runtime_lock:
             return self._runtime_state.is_running
+
     @is_running.setter
     def is_running(self, value: bool):
         with self._runtime_lock:
             self._runtime_state.is_running = value
+
     @property
     def current_state(self) -> State:
         with self._runtime_lock:
             return self._runtime_state.current_state
+
     @current_state.setter
     def current_state(self, state: State):
         with self._runtime_lock:
             self._runtime_state.current_state = state
+
     @property
     def last_known_url(self) -> str:
         with self._runtime_lock:
             return self._runtime_state.last_known_url
+
     @last_known_url.setter
     def last_known_url(self, value: str):
         with self._runtime_lock:
             self._runtime_state.last_known_url = value
+
     @property
     def raids_completed(self) -> int:
         with self._runtime_lock:
             return self._runtime_state.raids_completed
+
     @raids_completed.setter
     def raids_completed(self, value: int):
         with self._runtime_lock:
             self._runtime_state.raids_completed = value
+
     @property
     def raids_target(self) -> int:
         with self._runtime_lock:
             return self._runtime_state.raids_target
+
     @raids_target.setter
     def raids_target(self, value: int):
         with self._runtime_lock:
             self._runtime_state.raids_target = value
+
     @property
     def current_turn(self) -> int:
         with self._runtime_lock:
             return self._runtime_state.current_turn
+
     @current_turn.setter
     def current_turn(self, value: int):
         with self._runtime_lock:
             self._runtime_state.current_turn = value
+
     @property
     def turn_target(self) -> int:
         with self._runtime_lock:
             return self._runtime_state.turn_target
+
     @turn_target.setter
     def turn_target(self, value: int):
         with self._runtime_lock:
             self._runtime_state.turn_target = value
+
     def get_runtime_snapshot(self) -> dict:
         """Return a snapshot of runtime state for Flask."""
         with self._runtime_lock:
@@ -127,6 +138,7 @@ class ConfigManager:
                 "current_turn": self._runtime_state.current_turn,
                 "turn_target": self._runtime_state.turn_target,
             }
+
     # --- Battle Config (static settings) ---
     def get_battle_config(self) -> BattleConfig:
         with self._config_lock:
@@ -144,15 +156,18 @@ class ConfigManager:
                 max_people=self._battle_config.max_people,
                 summon_priority=list(self._battle_config.summon_priority),
             )
+
     def update_battle_config(self, **kwargs):
         with self._config_lock:
             for key, value in kwargs.items():
                 if hasattr(self._battle_config, key):
                     setattr(self._battle_config, key, value)
+
     def load_default_config(self, config_path: Path):
         with open(config_path) as f:
             data = json.load(f)
         self.update_battle_config(**data)
+
     def save_default_config(self, config_path: Path):
         with self._config_lock:
             data = {
@@ -169,5 +184,5 @@ class ConfigManager:
                 "max_people": self._battle_config.max_people,
                 "summon_priority": list(self._battle_config.summon_priority),
             }
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
