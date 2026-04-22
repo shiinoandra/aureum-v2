@@ -122,18 +122,52 @@ def action_select_raid(params, context: ActionContext):
         print("[!] No raids found in list")
         return ActionContext.RESULT_FAILED
 
-    # Filter by HP threshold
-    HP_THRESHOLD = 20
     eligible_raids = []
 
     for raid in raid_rooms:
         try:
-            hp_style = raid.find_element(By.CSS_SELECTOR, ".prt-raid-gauge-inner").get_attribute("style")
-            hp_percent = float(hp_style.split("width:")[1].split("%")[0])
+            # --- Extract metadata ---
+            raid_info = {
+                "raid_id": raid.get_attribute("data-raid-id"),
+                "quest_id": raid.get_attribute("data-quest-id"),
+                "name": raid.get_attribute("data-chapter-name") or "",
+                "hp_percent": 0.0,
+                "players_current": 0,
+                "players_max": 0,
+                "element": raid,
+            }
+            # Fallback name if data-chapter-name is empty
+            if not raid_info["name"]:
+                try:
+                    raid_info["name"] = raid.find_element(By.CSS_SELECTOR, ".txt-raid-name").text.strip()
+                except:
+                    pass
 
-            if hp_percent >= HP_THRESHOLD:
-                eligible_raids.append({"hp": hp_percent, "element": raid})
-        except (NoSuchElementException, IndexError, ValueError):
+            # HP
+            hp_style = raid.find_element(By.CSS_SELECTOR, ".prt-raid-gauge-inner").get_attribute("style")
+            raid_info["hp_percent"] = float(hp_style.split("width:")[1].split("%")[0])
+            # Player count: "5/30" → [5, 30]
+            try:
+                flees_text = raid.find_element(By.CSS_SELECTOR, ".prt-flees-in").text.strip()
+                current_str, max_str = flees_text.split("/")
+                raid_info["players_current"] = int(current_str)
+                raid_info["players_max"] = int(max_str)
+            except (NoSuchElementException, ValueError, IndexError):
+                # If player count is missing, default to 0/30 (accept it)
+                raid_info["players_current"] = 0
+                raid_info["players_max"] = 30
+
+            # HP range
+            if not (config.min_hp_threshold <= raid_info["hp_percent"] <= config.max_hp_threshold):
+                continue
+            # Player count range
+            if not (config.min_people <= raid_info["players_current"] <= config.max_people):
+                continue
+            # Name filter (optional whitelist
+
+            eligible_raids.append(raid_info)
+
+        except (NoSuchElementException, IndexError, ValueError) as e:
             continue
 
     if not eligible_raids:
@@ -142,7 +176,7 @@ def action_select_raid(params, context: ActionContext):
 
     # Select random eligible raid
     target = random.choice(eligible_raids)
-    print(f"[i] Selected raid with {target['hp']}% HP")
+    print(f"[i] Selected raid with {target['hp']}% HP and {target['players_current']} player")
     nav.click_element(target["element"])
     return ActionContext.RESULT_SUCCESS
 
