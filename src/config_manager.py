@@ -84,3 +84,22 @@ class ConfigManager:
         with open(config_path) as f:
             data = json.load(f)
         self.update_battle_config(**data)
+
+    def save_default_config(self,config_path:Path):
+        with self._config_lock:
+            data = {
+                "turn": self._battle_config.turn,
+                "refresh": self._battle_config.refresh,
+                "until_finish": self._battle_config.until_finish,
+                "trigger_skip": self._battle_config.trigger_skip,
+                "think_time_min": self._battle_config.think_time_min,
+                "think_time_max": self._battle_config.think_time_max,
+                "pre_fa": self._battle_config.pre_fa,
+                "min_hp_threshold": self._battle_config.min_hp_threshold,
+                "max_hp_threshold": self._battle_config.max_hp_threshold,
+                "min_people": self._battle_config.min_people,
+                "max_people": self._battle_config.max_people,
+                "summon_priority": list(self._battle_config.summon_priority),
+            }
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)

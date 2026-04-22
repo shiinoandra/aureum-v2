@@ -166,6 +166,7 @@
                 .then(r => r.json())
                 .then(() => console.log('Stop requested'));
         }
+        let wasReady = false;
         function checkReady() {
             fetch('/api/status')
                 .then(r => r.json())
@@ -174,13 +175,17 @@
                     if (!data.ready) {
                         startBtn.disabled = true;
                         startBtn.textContent = data.error ? 'Init Error' : 'Initializing...';
+                        wasReady = false;
                     } else {
                         startBtn.disabled = false;
                         startBtn.textContent = 'Start';
+                        if (!wasReady) {
+                            loadConfig();   // <-- FIX: fetch real default.json values now
+                            wasReady = true;
+                        }
                     }
                 });
         }
-        loadConfig();
         connectSSE();
         setInterval(checkReady, 2000);
     </script>

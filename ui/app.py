@@ -6,15 +6,18 @@ import queue
 import threading
 import time
 
+import undetected_chromedriver as uc  # Alternative to regular Chrome driver
+
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, _project_root)
-sys.path.insert(0, os.path.join(_project_root, 'src')
+sys.path.insert(0, os.path.join(_project_root, 'src'))
 
-from src.config_manager import ConfigManager
-from src.navigator import Navigator
-from src.core_engine import CoreEngine
-from src.state_machine import detect_state
-import undetected_chromedriver as uc
+# In ui/app.py, after sys.path setup:
+from config_manager import ConfigManager
+from navigator import Navigator
+from core_engine import CoreEngine
+from state_machine import detect_state
+
 
 app = Flask(__name__)
 config = ConfigManager()
@@ -141,6 +144,12 @@ def get_config():
 def update_config():
     data = request.json
     config.update_battle_config(**data)
+    project_root = __import__("pathlib").Path(__file__).parent.parent
+    config_path = project_root / "config" / "default.json"
+    try:
+        config.save_default_config(config_path)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "ok", "updated": data})
 
 
