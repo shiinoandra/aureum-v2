@@ -5,20 +5,15 @@ import json
 import queue
 import threading
 import time
-
 import undetected_chromedriver as uc  # Alternative to regular Chrome driver
-
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, _project_root)
 sys.path.insert(0, os.path.join(_project_root, 'src'))
-
 # In ui/app.py, after sys.path setup:
 from config_manager import ConfigManager
 from navigator import Navigator
 from core_engine import CoreEngine
 from state_machine import detect_state
-
-
 app = Flask(__name__)
 config = ConfigManager()
 # --- Globals ---
@@ -26,12 +21,9 @@ engine = None
 engine_ready = False
 engine_error = None
 announcer = None
-
-
 class MessageAnnouncer:
     def __init__(self):
         self.listeners = []
-
     def listen(self):
         q = queue.Queue(maxsize=10)
         self.listeners.append(q)
@@ -41,18 +33,13 @@ class MessageAnnouncer:
                 yield msg
         finally:
             self.listeners.remove(q)
-
     def announce(self, msg):
         for i in reversed(range(len(self.listeners))):
             try:
                 self.listeners[i].put_nowait(msg)
             except queue.Full:
                 del self.listeners[i]
-
-
 announcer = MessageAnnouncer()
-
-
 def create_browser():
     chrome_options = uc.ChromeOptions()
     chrome_options.add_argument("--start-maximized")
@@ -66,8 +53,6 @@ def create_browser():
         options=chrome_options, user_data_dir=user_data_dir, version_main=146
     )
     return driver
-
-
 def init_engine():
     global engine, engine_ready, engine_error
     try:
@@ -87,42 +72,32 @@ def init_engine():
         engine_error = str(e)
         print(f"[!] Engine init failed: {e}")
         import traceback
-
         traceback.print_exc()
-
-
 def _progress_monitor():
     """Push progress updates via SSE every 500ms."""
     while True:
         if engine:
-            ctx = engine.task_executor.context
-            url = getattr(config, "last_known_url", "")
-            state = detect_state(url).value if url else config.current_state.value
+            runtime = config.get_runtime_snapshot()
             payload = {
-                "is_running": getattr(config, "is_running", False),
-                "current_state": state,
-                "raids_completed": ctx.raids_completed,
-                "raids_target": getattr(config, "raids_target", 0),
-                "current_turn": ctx.current_turn,
-                "turn_target": getattr(config, "turn_target", 0),
+                "is_running": runtime["is_running"],
+                "current_state": runtime["current_state"],
+                "raids_completed": runtime["raids_completed"],
+                "raids_target": runtime["raids_target"],
+                "current_turn": runtime["current_turn"],
+                "turn_target": runtime["turn_target"],
             }
             announcer.announce(json.dumps(payload))
         time.sleep(0.5)
-
-
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
 @app.route("/api/status", methods=["GET"])
 def get_status():
     return jsonify({"ready": engine_ready, "error": engine_error})
-
-
 @app.route("/api/config", methods=["GET"])
 def get_config():
     battle_config = config.get_battle_config()
+    runtime = config.get_runtime_snapshot()
     return jsonify(
         {
             "turn": battle_config.turn,
@@ -132,14 +107,12 @@ def get_config():
             "think_time_min": battle_config.think_time_min,
             "think_time_max": battle_config.think_time_max,
             "summon_priority": battle_config.summon_priority,
-            "current_state": config.current_state.value,
-            "is_running": getattr(config, "is_running", False),
-            "raids_completed": getattr(config, "raids_completed", 0),
-            "raids_target": getattr(config, "raids_target", 0),
+            "current_state": runtime["current_state"],
+            "is_running": runtime["is_running"],
+            "raids_completed": runtime["raids_completed"],
+            "raids_target": runtime["raids_target"],
         }
     )
-
-
 @app.route("/api/config", methods=["POST"])
 def update_config():
     data = request.json
@@ -151,14 +124,12 @@ def update_config():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "ok", "updated": data})
-
-
 @app.route("/api/start", methods=["POST"])
 def start_task():
     global engine_ready
     if not engine_ready:
         return jsonify({"status": "error", "message": "Engine not ready yet"}), 503
-    if engine._running:
+    if config.is_running:
         return jsonify({"status": "error", "message": "Already running"}), 409
     task_type = request.json.get("task_type", "raid")
     project_root = __import__("pathlib").Path(__file__).parent.parent
@@ -169,41 +140,30 @@ def start_task():
         ), 404
     engine.start_task(task_path)
     return jsonify({"status": "started", "task_type": task_type})
-
-
 @app.route("/api/stop", methods=["POST"])
 def stop_task():
     if engine:
         engine.stop()
     return jsonify({"status": "stopped"})
-
-
 @app.route("/api/progress", methods=["GET"])
 def get_progress():
-    url = getattr(config, "last_known_url", "")
-    state = detect_state(url).value if url else config.current_state.value
-    ctx = engine.task_executor.context if engine else None
+    runtime = config.get_runtime_snapshot()
     return jsonify(
         {
-            "is_running": getattr(config, "is_running", False),
-            "current_state": state,
-            "raids_completed": ctx.raids_completed if ctx else 0,
-            "raids_target": getattr(config, "raids_target", 0),
-            "current_turn": ctx.current_turn if ctx else 0,
-            "turn_target": getattr(config, "turn_target", 0),
+            "is_running": runtime["is_running"],
+            "current_state": runtime["current_state"],
+            "raids_completed": runtime["raids_completed"],
+            "raids_target": runtime["raids_target"],
+            "current_turn": runtime["current_turn"],
+            "turn_target": runtime["turn_target"],
         }
     )
-
-
 @app.route("/api/events")
 def sse():
     def stream():
         for msg in announcer.listen():
             yield f"data: {msg}\n\n"
-
     return Response(stream(), mimetype="text/event-stream")
-
-
 if __name__ == "__main__":
     # Initialize browser in background so Flask can start serving immediately
     threading.Thread(target=init_engine, daemon=True).start()

@@ -306,7 +306,7 @@ def action_do_battle(params, context: ActionContext):
     start_time = time.time()
     while time.time() - start_time < 300:
         
-        context.current_turn = current_turn
+        context.config.current_turn = current_turn
         if "#result_multi/" in nav.get_current_url() or "#result/" in nav.get_current_url():
             print("[→] Battle ended - detected result URL")
             battle_ended = True
@@ -314,14 +314,14 @@ def action_do_battle(params, context: ActionContext):
         if battle_ended:
             if click_target:
                 nav.click_element(click_target)
-            context.raids_completed += 1
-            context.battle_finished = True
+            context.config.raids_completed += 1
+            context.config.battle_finished = True
             #print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
             return ActionContext.RESULT_SUCCESS
         
         # === 2. Turn limit reached? ===
         if not battle_config.until_finish and current_turn > battle_config.turn:
-            context.raids_completed += 1
+            context.config.raids_completed += 1
             print(f"[→] Turn limit reached ({battle_config.turn}).")
             return ActionContext.RESULT_SUCCESS
         
@@ -349,7 +349,7 @@ def action_do_battle(params, context: ActionContext):
                     nav.wait(0.3, 0.5)
                     
                     if not battle_config.until_finish and current_turn > battle_config.turn:
-                        context.raids_completed += 1
+                        context.config.raids_completed += 1
                         #print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
                         return ActionContext.RESULT_SUCCESS
                     
@@ -394,7 +394,7 @@ def action_do_battle(params, context: ActionContext):
                     nav.wait(0.3, 0.5)
                     
                     if not battle_config.until_finish and current_turn > battle_config.turn:
-                        context.raids_completed += 1
+                        context.config.raids_completed += 1
                         #print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
                         return ActionContext.RESULT_SUCCESS
 

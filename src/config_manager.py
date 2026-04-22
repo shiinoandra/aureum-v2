@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from state_machine import State
 
+
 @dataclass
 class BattleConfig:
     turn: int = 1
@@ -15,16 +16,26 @@ class BattleConfig:
     think_time_min: float = 0.2
     think_time_max: float = 0.5
     pre_fa: bool = False
-    min_hp_threshold :int = 60
-    max_hp_threshold : int = 100
-    min_people : int = 1
-    max_people : int = 1
+    min_hp_threshold: int = 60
+    max_hp_threshold: int = 100
+    min_people: int = 1
+    max_people: int = 30
     summon_priority: List[dict] = field(default_factory=list)
 
 
+@dataclass
+class RuntimeState:
+    is_running: bool = False
+    current_state: State = State.IDLE
+    last_known__url: str = ""
+    raids_completed: int = 0
+    raids_target: int = 0
+    current_turn: int = 0
+    turn_target: int = 0
+
 
 class ConfigManager:
-    _instance: Optional['ConfigManager'] = None
+    _instance: Optional["ConfigManager"] = None
     _lock = Lock()
 
     def __new__(cls):
@@ -34,6 +45,7 @@ class ConfigManager:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
+
     def __init__(self):
         if self._initialized:
             return
@@ -41,24 +53,81 @@ class ConfigManager:
         self._config_lock = Lock()
         self._current_state = State.IDLE
         self._battle_config = BattleConfig()
+        self._runtime_state = RuntimeState()
         self._initialized = True
 
-        #Runtime stats (updated by coreengine,read by flask)
-        self.is_running = False
-        self.raids_completed = 0
-        self.raids_target = 0
-        self.current_turn = 0
-        self.turn_target = 0
-        self.last_known_url=""
 
+
+    # --- Runtime State (thread-safe, UI-visible) ---
+    @property
+    def is_running(self) -> bool:
+        with self._runtime_lock:
+            return self._runtime_state.is_running
+    @is_running.setter
+    def is_running(self, value: bool):
+        with self._runtime_lock:
+            self._runtime_state.is_running = value
     @property
     def current_state(self) -> State:
-        with self._state_lock:
-            return self._current_state
+        with self._runtime_lock:
+            return self._runtime_state.current_state
     @current_state.setter
     def current_state(self, state: State):
-        with self._state_lock:
-            self._current_state = state
+        with self._runtime_lock:
+            self._runtime_state.current_state = state
+    @property
+    def last_known_url(self) -> str:
+        with self._runtime_lock:
+            return self._runtime_state.last_known_url
+    @last_known_url.setter
+    def last_known_url(self, value: str):
+        with self._runtime_lock:
+            self._runtime_state.last_known_url = value
+    @property
+    def raids_completed(self) -> int:
+        with self._runtime_lock:
+            return self._runtime_state.raids_completed
+    @raids_completed.setter
+    def raids_completed(self, value: int):
+        with self._runtime_lock:
+            self._runtime_state.raids_completed = value
+    @property
+    def raids_target(self) -> int:
+        with self._runtime_lock:
+            return self._runtime_state.raids_target
+    @raids_target.setter
+    def raids_target(self, value: int):
+        with self._runtime_lock:
+            self._runtime_state.raids_target = value
+    @property
+    def current_turn(self) -> int:
+        with self._runtime_lock:
+            return self._runtime_state.current_turn
+    @current_turn.setter
+    def current_turn(self, value: int):
+        with self._runtime_lock:
+            self._runtime_state.current_turn = value
+    @property
+    def turn_target(self) -> int:
+        with self._runtime_lock:
+            return self._runtime_state.turn_target
+    @turn_target.setter
+    def turn_target(self, value: int):
+        with self._runtime_lock:
+            self._runtime_state.turn_target = value
+    def get_runtime_snapshot(self) -> dict:
+        """Return a snapshot of runtime state for Flask."""
+        with self._runtime_lock:
+            return {
+                "is_running": self._runtime_state.is_running,
+                "current_state": self._runtime_state.current_state.value,
+                "last_known_url": self._runtime_state.last_known_url,
+                "raids_completed": self._runtime_state.raids_completed,
+                "raids_target": self._runtime_state.raids_target,
+                "current_turn": self._runtime_state.current_turn,
+                "turn_target": self._runtime_state.turn_target,
+            }
+    # --- Battle Config (static settings) ---
     def get_battle_config(self) -> BattleConfig:
         with self._config_lock:
             return BattleConfig(
@@ -71,9 +140,9 @@ class ConfigManager:
                 pre_fa=self._battle_config.pre_fa,
                 min_hp_threshold=self._battle_config.min_hp_threshold,
                 max_hp_threshold=self._battle_config.max_hp_threshold,
-                min_people = self._battle_config.min_people,
-                max_people= self._battle_config.max_people,
-                summon_priority=list(self._battle_config.summon_priority)
+                min_people=self._battle_config.min_people,
+                max_people=self._battle_config.max_people,
+                summon_priority=list(self._battle_config.summon_priority),
             )
     def update_battle_config(self, **kwargs):
         with self._config_lock:
@@ -84,8 +153,7 @@ class ConfigManager:
         with open(config_path) as f:
             data = json.load(f)
         self.update_battle_config(**data)
-
-    def save_default_config(self,config_path:Path):
+    def save_default_config(self, config_path: Path):
         with self._config_lock:
             data = {
                 "turn": self._battle_config.turn,
