@@ -61,6 +61,7 @@ I should ask about:
 2. Whether Flask should be the entry point (instead of main.py)
 3. Whether they have an existing frontend framework preference (vanilla JS, React, etc.) or just plain HTML
 4. Whether they want the UI to also display the current URL/state from state_machine
+5. Whether they want the UI to have a "Launch Browser" button, or do they launch it manually before starting the task?
 Let me plan this comprehensively and ask clarifying questions.
 This is a great next step. Let me analyze the current architecture and propose a solid integration plan.
 ---
@@ -154,3 +155,46 @@ Questions Before Implementation
 Please let me know your preferences and I'll provide the complete implementation plan and snippets.
 ▣  Plan · Kimi K2.6 (3x limits) · 1m 19s
 1. for now its okay for flask to own the core engine so we coulld just put the creation of selenium browser together with flask 2. we will just use simple html+vnmilla js for now if the decoupling is done well and the rest api is independnet it wil be easy to develop other front end later  3. yeah currently manin loop is not called so you could implement the state deteciton to run_task_loop if then main_loop is not needed it can be reemoved  4. i will launch it manually for now to simplify it we can add launch browser later 5. lets use SSE because most of the communicationn is from server to the client
+
+---
+
+## Refactor: Consolidating State Ownership (RuntimeState)
+
+**Date**: Current session
+**Status**: Completed
+
+### Problem
+After the initial Flask integration, state was scattered across three places:
+- `ActionContext.current_turn` and `ActionContext.raids_completed` — written by actions, then synced by CoreEngine
+- `ConfigManager` had loose runtime attributes (`is_running`, `raids_completed`, etc.) mixed with `BattleConfig`
+- Flask occasionally peeked into `engine._running` and `ctx.raids_completed`
+
+This created a "dual singleton" bug where `app.py` (importing `src.config_manager`) and `core_engine.py` (importing `config_manager`) saw different `ConfigManager` instances until imports were unified.
+
+### Solution
+1. **Introduced `RuntimeState` dataclass** inside `ConfigManager`, alongside `BattleConfig`
+   - `RuntimeState`: live, UI-visible, thread-safe, NOT persisted
+   - `BattleConfig`: static settings, persisted to `config/default.json`
+2. **Removed `current_turn` and `raids_completed` from `ActionContext`**
+   - `ActionContext` now only holds transient FSM state: `battle_finished`, `last_result`
+3. **Actions write progress directly to `ConfigManager`**
+   - `do_battle` does `context.config.raids_completed += 1` and `context.config.current_turn = current_turn`
+4. **Flask reads exclusively from `ConfigManager`**
+   - No more `engine._running` checks in `start_task`; uses `config.is_running`
+   - SSE and progress endpoints use `config.get_runtime_snapshot()`
+5. **Unified imports** in `ui/app.py` to use bare imports (`from config_manager import ConfigManager`) after adding `src/` to `sys.path`
+
+### Data Flow After Refactor
+```
+Automation Thread → ConfigManager (writes) → Flask Thread (reads)
+```
+No sync step. No dual writes. Single source of truth.
+
+### Files Changed
+- `src/config_manager.py` — Added `RuntimeState`, property accessors, `get_runtime_snapshot()`, `save_default_config()`
+- `src/context.py` — Removed `current_turn`, `raids_completed`
+- `src/actions.py` — Changed writes to `context.config.xxx`
+- `src/core_engine.py` — Removed sync lines, added lifecycle mirroring to `RuntimeState.is_running`
+- `src/task_executor.py` — `check_exit_condition` reads `self.config.raids_completed`
+- `ui/app.py` — Reads only from `ConfigManager`; added SSE announcer; `POST /api/config` persists to JSON
+- `ui/templates/index.html` — Added Start/Stop, progress bar, SSE client, task selector

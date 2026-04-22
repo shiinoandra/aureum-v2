@@ -4,6 +4,10 @@
 
 This document describes the configurable parameters used in the automation script for Granblue Fantasy.
 
+## Persistence
+
+All parameters listed below are stored in `config/default.json`. When you click **Save Config** in the UI, the values are written back to this file immediately, making it the single source of truth that survives restarts.
+
 ## Battle Types
 
 ### Quest Battle
@@ -48,6 +52,31 @@ This document describes the configurable parameters used in the automation scrip
 - **Used for**: All actions
 - **Description**: Maximum delay between actions to mimic human behavior. Actual delay is random between min and max
 
+### `pre_fa` (boolean)
+- **Default**: false
+- **Used for**: Both quest and raid
+- **Description**: Click on-the-spot (at current mouse position) before battle starts. Useful for skipping initial dialog or triggering pre-battle full auto
+
+### `min_hp_threshold` (integer)
+- **Default**: 60
+- **Used for**: Raid battles
+- **Description**: Minimum HP % for a raid to be considered eligible when browsing the raid list
+
+### `max_hp_threshold` (integer)
+- **Default**: 100
+- **Used for**: Raid battles
+- **Description**: Maximum HP % for a raid to be considered eligible
+
+### `min_people` (integer)
+- **Default**: 1
+- **Used for**: Raid battles
+- **Description**: Minimum player count for a raid to be considered eligible
+
+### `max_people` (integer)
+- **Default**: 30
+- **Used for**: Raid battles
+- **Description**: Maximum player count for a raid to be considered eligible
+
 ### `summon_priority` (array of objects)
 - **Default**: `[]`
 - **Used for**: Both quest and raid
@@ -62,7 +91,8 @@ This document describes the configurable parameters used in the automation scrip
     {"name": "Kaguya", "level": "Lvl 100"},
     {"name": "Shiva"}
   ]
----
+  ```
+
 ## How Level-less Matching Works
 ```python
 if level:
@@ -78,6 +108,8 @@ else:
     //div[contains(@class, 'supporter-summon') and
         .//span[@class='js-summon-name' and normalize-space(text())='{name}']]
     """
+```
+
 ## Future Expansion
 
 These parameters are for the built-in full auto battle. Future versions will support custom battle scripts with per-battle JSON configuration.

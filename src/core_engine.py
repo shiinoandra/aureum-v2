@@ -101,9 +101,6 @@ class CoreEngine:
 
         self.config.is_running = False
         self._running = False
-
-        self.config.is_running = False
-        self._running = False
         print("[*] Task loop ended")
 
     def _main_loop(self):
