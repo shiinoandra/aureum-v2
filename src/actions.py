@@ -45,36 +45,38 @@ def _detect_popup_type(popup_text: str) -> str:
 
 
 def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
-    """
-    Check for popup and handle it if present.
-    Returns popup type if popup was shown, None otherwise.
-    """
     popup = None
+    selectors = [
+        ".common-pop-error.pop-show",
+        ".pop-usual.pop-result-assist-raid.pop-show",
+        ".pop-usual.pop-rematch-fail.pop-show",
+    ]
     
-    # Try error popup first
-    try:
-        popup = nav.driver.find_element(By.CSS_SELECTOR, ".common-pop-error.pop-show")
-    except NoSuchElementException:
-        pass
+    for sel in selectors:
+        try:
+            popup = nav.driver.find_element(By.CSS_SELECTOR, sel)
+            break
+        except NoSuchElementException:
+            pass
     
-    # Try result/assist popup (summon screen, etc.)
+    # Fallback: generic .pop-usual but with text filter
     if not popup:
         try:
             popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop-usual.pop-show")
         except NoSuchElementException:
-            pass
+            return None
     
-    if not popup:
-        return None
-    
+    # Get text
     try:
         popup_text = popup.find_element(By.CSS_SELECTOR, "#popup-body").text.strip()
-    except NoSuchElementException:
-        try:
-            # Fallback: some popups might not have #popup-body
-            popup_text = popup.text.strip()
-        except:
-            return None
+    except:
+        popup_text = popup.text.strip()
+    
+    # Ignore victory/reward popups
+    victory_keywords = ["exp", "loot collected", "rupies collected", 
+                        "items were used", "battle log"]
+    if any(k in popup_text.lower() for k in victory_keywords):
+        return None
     
     print(f"[!] Popup detected: '{popup_text}'")
     popup_type = _detect_popup_type(popup_text)
@@ -87,7 +89,6 @@ def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
         print("[!] Could not find OK button to close popup")
     
     return popup_type
-
 
 # =============================================================================
 # Raid Actions
