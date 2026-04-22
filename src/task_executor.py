@@ -122,7 +122,7 @@ class TaskExecutor:
             return True,"refresh_raid_list"
         elif popup_type == "ended":
             print("[i] Raid already ended - skipping")
-            return True,"select_raid"
+            return True,"refresh_raid_list"
         else:
             print(f"[i] Unknown popup: {popup_type}")
             return True,None
