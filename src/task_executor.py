@@ -97,7 +97,7 @@ class TaskExecutor:
     def _handle_popup_recovery(self, popup_type: str) -> bool:
         """
         Handle popup based on type.
-        Returns True if recovery can continue, False if should stop.
+        Returns Tuple a flag and a redirection to other aciton if recovery can continue, False if should stop.
         """
         if popup_type == "captcha":
             print("[!!!] CAPTCHA detected - stopping automation")
