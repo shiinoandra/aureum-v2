@@ -43,6 +43,14 @@ class ConfigManager:
         self._battle_config = BattleConfig()
         self._initialized = True
 
+        #Runtime stats (updated by coreengine,read by flask)
+        self.is_running = False
+        self.raids_completed = 0
+        self.raids_target = 0
+        self.current_turn = 0
+        self.turn_target = 0
+        self.last_known_url=""
+
     @property
     def current_state(self) -> State:
         with self._state_lock:

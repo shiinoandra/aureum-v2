@@ -165,7 +165,6 @@ def action_select_raid(params, context: ActionContext):
             # Player count range
             if not (battle_config.min_people <= raid_info["players_current"] <= battle_config.max_people):
                 continue
-            # Name filter (optional whitelist
 
             eligible_raids.append(raid_info)
 
@@ -307,6 +306,7 @@ def action_do_battle(params, context: ActionContext):
     start_time = time.time()
     while time.time() - start_time < 300:
         
+        context.current_turn = current_turn
         if "#result_multi/" in nav.get_current_url() or "#result/" in nav.get_current_url():
             print("[→] Battle ended - detected result URL")
             battle_ended = True

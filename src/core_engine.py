@@ -27,6 +27,7 @@ class CoreEngine:
     
     def start(self):
         """Start the main automation loop"""
+        """Start the main automation loop (legacy; not used when Flask owns the engine)."""
         self._running = True
         while self._running:
             self._main_loop()
@@ -35,9 +36,20 @@ class CoreEngine:
         """Stop the automation loop"""
         self._running = False
         self.task_executor.stop()
+        if self._task_thread and self._task_thread.is_alive():
+            self._task_thread.join(timeout=5)
+
     
     def start_task(self, task_path: Path):
         """Start a specific task in background thread"""
+
+        if self._running:
+            print("[!] Engine is already running")
+            return
+        if self._task_thread and self._task_thread.is_alive():
+            print("[!] Previous task thread still alive")
+            return
+            
         self._current_task = self.task_executor.load_task(task_path)
         self._running = True
         self._task_thread = threading.Thread(target=self._run_task_loop)
@@ -57,12 +69,22 @@ class CoreEngine:
         print("[*] Task loop started")
         while self._running and self._current_task:
             try:
+
+                # State detection & runtime stats
+                self.config.last_known_url = self.navigator.get_current_url()
+                self.config.current_state = detect_state(self.config.last_known_url)
+                self.config.turn_target = self.config.get_battle_config().turn
+                self.config.raids_target = self._current_task.get("exit_condition", {}).get("value", 0)
+
                 # Reset context for new raid cycle
                 print(f"Raids completed: {self.task_executor.context.raids_completed}")
                 self.task_executor.context.reset()
+                self.config.current_turn=0
                 
                 # Execute ONE raid cycle
                 result = self.task_executor.execute_task(self._current_task)
+                
+                self.config.raids_completed = self.task_executor.context.raids_completed
                 
                 if not result:
                     # Stopped early (error/captcha)
