@@ -15,6 +15,10 @@ class BattleConfig:
     think_time_min: float = 0.2
     think_time_max: float = 0.5
     pre_fa: bool = False
+    min_hp_threshold :int = 60
+    max_hp_threshold : int = 100
+    min_people : int = 1
+    max_people : int = 1
     summon_priority: List[dict] = field(default_factory=list)
 
 
@@ -57,6 +61,10 @@ class ConfigManager:
                 think_time_min=self._battle_config.think_time_min,
                 think_time_max=self._battle_config.think_time_max,
                 pre_fa=self._battle_config.pre_fa,
+                min_hp_threshold=self._battle_config.min_hp_threshold,
+                max_hp_threshold=self._battle_config.max_hp_threshold,
+                min_people = self._battle_config.min_people,
+                max_people= self._battle_config.max_people,
                 summon_priority=list(self._battle_config.summon_priority)
             )
     def update_battle_config(self, **kwargs):

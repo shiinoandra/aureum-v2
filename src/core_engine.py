@@ -58,6 +58,7 @@ class CoreEngine:
         while self._running and self._current_task:
             try:
                 # Reset context for new raid cycle
+                print(f"Raids completed: {self.task_executor.context.raids_completed}")
                 self.task_executor.context.reset()
                 
                 # Execute ONE raid cycle
