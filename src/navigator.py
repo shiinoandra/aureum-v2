@@ -141,8 +141,9 @@ class Navigator:
     #         time.sleep(duration / steps)
 
     def click_onthespot(self):
-        self.wait(0.5,0.8)
+        self.wait(0.1,0.2)
         pyautogui.leftClick()
+        
     def _fast_move(self, end_pos: tuple):
         start_pos = pyautogui.position()
         

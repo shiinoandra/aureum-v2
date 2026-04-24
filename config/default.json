@@ -10,10 +10,19 @@
   "max_hp_threshold": 100,
   "min_people": 1,
   "max_people": 30,
-  "raid_amount": 10,
+  "raid_amount": 1000,
   "summon_priority": [
-    {"name": "Grand Order", "level": "Lvl 200"},
-    {"name": "Huanglong", "level": "Lvl 100"},
-    {"name": "Kaguya", "level": "Lvl 150"}
+    {
+      "name": "Titan",
+      "level": "Lvl 250"
+    },
+    {
+      "name": "Huanglong",
+      "level": "Lvl 100"
+    },
+    {
+      "name": "Kaguya",
+      "level": "Lvl 150"
+    }
   ]
 }

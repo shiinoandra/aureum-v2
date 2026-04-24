@@ -48,6 +48,6 @@
   ],
   "exit_condition": {
     "type": "raid_count",
-    "value": 10
+    "value": 1000
   }
 }
