@@ -3,70 +3,83 @@ import json
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
-from actions import _check_and_handle_popup
-from context import ActionContext, ActionRegistry
 import time
 import random
 
-
-class ExitConditionType(Enum):
-    RAID_COUNT = "raid_count"
-    UNTIL_FINISH = "until_finish"
+from action.action_context import ActionContext, ActionRegistry
+from action.actions import _check_and_handle_popup
 
 
-@dataclass
-class ExitCondition:
-    type: ExitConditionType
-    value: Any
+class CaptchaDetectedException(Exception):
+    """Raised when a CAPTCHA popup is detected. Halts all automation."""
+    pass
+
+
+class StopRequestedException(Exception):
+    """Raised when the user requests a stop."""
+    pass
 
 
 class TaskExecutor:
-    """Executes tasks defined in JSON"""
+    """Pure FSM runner. Executes one action cycle via transitions.
 
-    def __init__(self, navigator, config_manager):
+    Does NOT check task-level exit conditions.
+    Does NOT track progress counters.
+    Raises CaptchaDetectedException on captcha popup.
+    """
+
+    def __init__(self, navigator, global_config, task_config, task_progress):
         self.navigator = navigator
-        self.config = config_manager
-        self.context = ActionContext(navigator, config_manager)
-        self._running = True
+        self.global_config = global_config
+        self.task_config = task_config
+        self.task_progress = task_progress
+        self.context = ActionContext(navigator, global_config, task_config, task_progress)
+        self._stop_requested = False
 
-    def load_task(self, task_path: Path) -> dict:
-        """Load task definition from JSON file"""
-        with open(task_path) as f:
-            return json.load(f)
-
-    def execute_task(self, task: dict) -> bool:
+    def execute_task_cycle(self, actions: list) -> str:
         """
-        Execute ONE task cycle.
+        Execute ONE task cycle through the action FSM.
+
+        Args:
+            actions: List of action definitions from task JSON.
+
         Returns:
-            True - task cycle completed successfully
-            False - stopped early (error/captcha)
+            ActionContext.RESULT_SUCCESS or ActionContext.RESULT_FAILED
+
+        Raises:
+            CaptchaDetectedException: if captcha popup encountered.
+            StopRequestedException: if stop requested mid-cycle.
         """
-        actions = task.get("actions", [])
         action_map = {a["name"]: a for a in actions}
-        # Start from first action
         current_name = actions[0]["name"]
-        while current_name and self._running:
+
+        while current_name:
+            if self._stop_requested:
+                raise StopRequestedException()
+
             # Check popup before action
             popup_type = _check_and_handle_popup(self.navigator)
             if popup_type:
                 can_continue, redirect = self._handle_popup_recovery(popup_type)
                 if not can_continue:
-                    return False
+                    return ActionContext.RESULT_FAILED
                 if redirect:
-                    print(f"[i] Popup recovery: redirecting to '{redirect}'")
                     current_name = redirect
                     continue
-            # Get action and params
+
             action_def = action_map.get(current_name)
             if not action_def:
                 print(f"[!] Action '{current_name}' not found")
-                return False
+                return ActionContext.RESULT_FAILED
+
             name = action_def["name"]
             params = action_def.get("params", {})
             transitions = action_def.get("transitions", {})
+
             # Wait if previous action failed
             if self.context.last_result == ActionContext.RESULT_FAILED:
                 time.sleep(random.uniform(3, 5))
+
             # Execute action
             action_func = ActionRegistry.get(name)
             if action_func:
@@ -76,36 +89,50 @@ class TaskExecutor:
                 time.sleep(random.uniform(0.2, 0.5))
             else:
                 print(f"[!] Action '{name}' not found")
-                return False
+                return ActionContext.RESULT_FAILED
+
             self.context.last_result = result
-            # Check if this is the LAST action AND it succeeded
-            # If so, task cycle is complete - exit and let caller handle next steps
+
+            # If last action succeeded, cycle complete
             if action_def == actions[-1] and result == ActionContext.RESULT_SUCCESS:
                 self.context.last_result = None
-                return True
-            # Determine next action from transitions
+                return ActionContext.RESULT_SUCCESS
+
+            # Transition
             if result in transitions:
                 current_name = transitions[result]
+            elif ActionContext.RESULT_SUCCESS in transitions:
+                current_name = transitions[ActionContext.RESULT_SUCCESS]
+            elif not transitions:
+                # Fallback: if no transitions defined, move to next action in list
+                try:
+                    current_idx = actions.index(action_def)
+                    if current_idx + 1 < len(actions):
+                        current_name = actions[current_idx + 1]["name"]
+                    else:
+                        # Last action with no transitions - cycle complete
+                        return ActionContext.RESULT_SUCCESS
+                except ValueError:
+                    print(f"[!] Could not find action '{current_name}' in list")
+                    return ActionContext.RESULT_FAILED
             else:
-                if ActionContext.RESULT_SUCCESS in transitions:
-                    current_name = transitions[ActionContext.RESULT_SUCCESS]
-                else:
-                    print(
-                        f"[!] No transition for result '{result}' in '{current_name}'"
-                    )
-                    return False
-        self.context.last_result = None
-        return True
+                print(
+                    f"[!] No transition for result '{result}' in '{current_name}'"
+                )
+                return ActionContext.RESULT_FAILED
 
-    def _handle_popup_recovery(self, popup_type: str) -> bool:
+        self.context.last_result = None
+        return ActionContext.RESULT_SUCCESS
+
+    def _handle_popup_recovery(self, popup_type: str):
         """
         Handle popup based on type.
-        Returns True if recovery can continue, False if should stop.
+        Returns (can_continue: bool, redirect: str|None).
+        Raises CaptchaDetectedException for captcha.
         """
         if popup_type == "captcha":
             print("[!!!] CAPTCHA detected - stopping automation")
-            self._running = False
-            return False, None
+            raise CaptchaDetectedException()
         elif popup_type == "raid_full":
             print("[i] Raid full - will refresh and retry")
             return True, "refresh_raid_list"
@@ -130,19 +157,5 @@ class TaskExecutor:
             print(f"[i] Unknown popup: {popup_type}")
             return True, None
 
-    def check_exit_condition(self, task: dict) -> bool:
-        """Check if task exit condition is met."""
-        exit_cond = task.get("exit_condition")
-        if not exit_cond:
-            return False
-        cond_type = exit_cond.get("type")
-        cond_value = exit_cond.get("value")
-        if cond_type == ExitConditionType.RAID_COUNT.value:
-            return self.config.raids_completed >= cond_value
-        elif cond_type == ExitConditionType.UNTIL_FINISH.value:
-            return self.context.battle_finished
-        return False
-
     def stop(self):
-        """Stop the task executor"""
-        self._running = False
+        self._stop_requested = True

@@ -5,17 +5,20 @@ import json
 import queue
 import threading
 import time
-import undetected_chromedriver as uc
+import uuid
+from pathlib import Path
+from datetime import datetime
+
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, _project_root)
 sys.path.insert(0, os.path.join(_project_root, 'src'))
-from config_manager import ConfigManager
-from navigator import Navigator
-from core_engine import CoreEngine
-from state_machine import detect_state
+
+from infra.navigator import Navigator
+from runtime.runtime_manager import RuntimeManager
+from task.task import Task, TaskConfig
+
 app = Flask(__name__)
-config = ConfigManager()
-engine = None
+runtime = None
 engine_ready = False
 engine_error = None
 announcer = None
@@ -62,16 +65,12 @@ def create_browser():
 
 
 def init_engine():
-    global engine, engine_ready, engine_error
+    global runtime, engine_ready, engine_error
     try:
         driver = create_browser()
         driver.get("https://game.granbluefantasy.jp/")
         navigator = Navigator(driver)
-        engine = CoreEngine(navigator)
-        project_root = __import__("pathlib").Path(__file__).parent.parent
-        config_path = project_root / "config" / "default.json"
-        if config_path.exists():
-            config.load_default_config(config_path)
+        runtime = RuntimeManager(navigator)
         threading.Thread(target=_progress_monitor, daemon=True).start()
         engine_ready = True
         print("[*] Engine initialized and ready")
@@ -85,114 +84,236 @@ def init_engine():
 def _progress_monitor():
     """Push progress updates via SSE every 500ms."""
     while True:
-        if engine:
-            runtime = config.get_runtime_snapshot()
+        if runtime:
+            snapshot = runtime.get_current_progress_snapshot()
+            queue_snapshot = _get_queue_snapshot()
             payload = {
-                "is_running": runtime["is_running"],
-                "current_state": runtime["current_state"],
-                "raids_completed": runtime["raids_completed"],
-                "raids_target": runtime["raids_target"],
-                "current_turn": runtime["current_turn"],
-                "turn_target": runtime["turn_target"],
-                "current_raid_name": runtime["current_raid_name"],
-                "boss_hp_at_entry": runtime["boss_hp_at_entry"],
-                "task_start_time": runtime["task_start_time"],
+                "is_running": snapshot["is_running"],
+                "current_state": snapshot["current_state"],
+                "raids_completed": snapshot["raids_completed"],
+                "raids_target": snapshot["raids_target"],
+                "current_turn": snapshot["current_turn"],
+                "turn_target": snapshot["turn_target"],
+                "current_raid_name": snapshot["current_raid_name"],
+                "boss_hp_at_entry": snapshot["boss_hp_at_entry"],
+                "queue": queue_snapshot,
             }
             announcer.announce(json.dumps(payload))
         time.sleep(0.5)
 
+
+def _get_queue_snapshot():
+    """Serialize runtime queue for UI."""
+    if not runtime:
+        return []
+    result = []
+    for idx, task in enumerate(runtime.task_queue):
+        exit_val = task.exit_condition.get("value", 0) if task.exit_condition else 0
+        result.append({
+            "index": idx,
+            "task_type": task.task_type,
+            "task_id": task.task_id,
+            "amount": exit_val,
+        })
+    return result
+
+
+def _get_tasks_dir():
+    return Path(__file__).parent.parent / "tasks"
+
+
+# =============================================================================
+# Page Routes
+# =============================================================================
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
+# =============================================================================
+# Status
+# =============================================================================
+
 @app.route("/api/status", methods=["GET"])
 def get_status():
     return jsonify({"ready": engine_ready, "error": engine_error})
 
 
-@app.route("/api/config", methods=["GET"])
-def get_config():
-    battle_config = config.get_battle_config()
-    runtime = config.get_runtime_snapshot()
-    return jsonify(
-        {
-            "turn": battle_config.turn,
-            "refresh": battle_config.refresh,
-            "until_finish": battle_config.until_finish,
-            "trigger_skip": battle_config.trigger_skip,
-            "think_time_min": battle_config.think_time_min,
-            "think_time_max": battle_config.think_time_max,
-            "pre_fa": battle_config.pre_fa,
-            "min_hp_threshold": battle_config.min_hp_threshold,
-            "max_hp_threshold": battle_config.max_hp_threshold,
-            "min_people": battle_config.min_people,
-            "max_people": battle_config.max_people,
-            "raid_amount": battle_config.raid_amount,
-            "summon_priority": battle_config.summon_priority,
-            "current_state": runtime["current_state"],
-            "is_running": runtime["is_running"],
-            "raids_completed": runtime["raids_completed"],
-            "raids_target": runtime["raids_target"],
-        }
+# =============================================================================
+# Task List / Details
+# =============================================================================
+
+@app.route("/api/list_tasks", methods=["GET"])
+def list_tasks():
+    """Return all .json filenames in tasks/ directory."""
+    tasks_dir = _get_tasks_dir()
+    if not tasks_dir.exists():
+        return jsonify([])
+    files = sorted([f.name for f in tasks_dir.glob("*.json")])
+    return jsonify(files)
+
+
+@app.route("/api/task/<name>", methods=["GET"])
+def get_task(name):
+    """Load a task JSON file by name."""
+    tasks_dir = _get_tasks_dir()
+    task_path = tasks_dir / name
+    if not task_path.exists():
+        return jsonify({"status": "error", "message": "Task not found"}), 404
+    with open(task_path) as f:
+        data = json.load(f)
+    return jsonify(data)
+
+
+# =============================================================================
+# Queue Management
+# =============================================================================
+
+@app.route("/api/enqueue", methods=["POST"])
+def enqueue():
+    """Add a task to the runtime queue."""
+    global engine_ready
+    if not engine_ready:
+        return jsonify({"status": "error", "message": "Engine not ready"}), 503
+
+    data = request.json or {}
+    task_name = data.get("task_name")
+    amount = data.get("amount", 1)
+
+    if not task_name:
+        return jsonify({"status": "error", "message": "task_name required"}), 400
+
+    tasks_dir = _get_tasks_dir()
+    task_path = tasks_dir / task_name
+    if not task_path.exists():
+        return jsonify({"status": "error", "message": f"Task {task_name} not found"}), 404
+
+    with open(task_path) as f:
+        task_def = json.load(f)
+
+    task_config = TaskConfig.from_dict(task_def.get("task_config", {}))
+    exit_condition = dict(task_def.get("exit_condition", {}))
+    if exit_condition.get("type") == "raid_count":
+        exit_condition["value"] = amount
+
+    task = Task(
+        task_id=str(uuid.uuid4())[:8],
+        task_type=task_def.get("task_type", "raid"),
+        task_config=task_config,
+        actions=task_def.get("actions", []),
+        exit_condition=exit_condition,
     )
 
+    runtime.enqueue_task(task)
+    return jsonify({"status": "ok", "task_name": task_name, "amount": amount})
 
-@app.route("/api/config", methods=["POST"])
-def update_config():
-    data = request.json
-    config.update_battle_config(**data)
-    project_root = __import__("pathlib").Path(__file__).parent.parent
-    config_path = project_root / "config" / "default.json"
+
+@app.route("/api/queue", methods=["GET"])
+def get_queue():
+    """Return current queue state."""
+    return jsonify(_get_queue_snapshot())
+
+
+@app.route("/api/remove_from_queue", methods=["POST"])
+def remove_from_queue():
+    """Remove a task from queue by index."""
+    data = request.json or {}
+    index = data.get("index")
+    if index is None or not runtime:
+        return jsonify({"status": "error"}), 400
     try:
-        config.save_default_config(config_path)
+        # deque doesn't support del by index directly
+        queue_list = list(runtime.task_queue)
+        if 0 <= index < len(queue_list):
+            del queue_list[index]
+            runtime.task_queue.clear()
+            runtime.task_queue.extend(queue_list)
+            return jsonify({"status": "ok"})
+        return jsonify({"status": "error", "message": "Invalid index"}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    return jsonify({"status": "ok", "updated": data})
 
+
+@app.route("/api/reorder_queue", methods=["POST"])
+def reorder_queue():
+    """Reorder queue items."""
+    data = request.json or {}
+    old_index = data.get("old_index")
+    new_index = data.get("new_index")
+    if old_index is None or new_index is None or not runtime:
+        return jsonify({"status": "error"}), 400
+    try:
+        queue_list = list(runtime.task_queue)
+        if 0 <= old_index < len(queue_list) and 0 <= new_index <= len(queue_list):
+            item = queue_list.pop(old_index)
+            queue_list.insert(new_index, item)
+            runtime.task_queue.clear()
+            runtime.task_queue.extend(queue_list)
+            return jsonify({"status": "ok"})
+        return jsonify({"status": "error", "message": "Invalid index"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/clear_queue", methods=["POST"])
+def clear_queue():
+    """Clear the entire queue."""
+    if runtime:
+        runtime.task_queue.clear()
+    return jsonify({"status": "ok"})
+
+
+# =============================================================================
+# Start / Stop
+# =============================================================================
 
 @app.route("/api/start", methods=["POST"])
-def start_task():
+def start_runtime():
+    """Start the runtime if queue is non-empty."""
     global engine_ready
     if not engine_ready:
         return jsonify({"status": "error", "message": "Engine not ready yet"}), 503
-    if config.is_running:
+    if runtime.is_running:
         return jsonify({"status": "error", "message": "Already running"}), 409
-    task_type = request.json.get("task_type", "raid")
-    project_root = __import__("pathlib").Path(__file__).parent.parent
-    task_path = project_root / "tasks" / f"{task_type}.json"
-    if not task_path.exists():
-        return jsonify(
-            {"status": "error", "message": f"Task {task_type} not found"}
-        ), 404
-    engine.start_task(task_path)
-    return jsonify({"status": "started", "task_type": task_type})
+    if not runtime.task_queue:
+        return jsonify({"status": "error", "message": "Queue is empty"}), 400
+
+    runtime.start()
+    return jsonify({"status": "started"})
 
 
 @app.route("/api/stop", methods=["POST"])
-def stop_task():
-    if engine:
-        engine.stop()
+def stop_runtime():
+    """Stop runtime and clear queue."""
+    if runtime:
+        runtime.stop()
+        runtime.task_queue.clear()
     return jsonify({"status": "stopped"})
 
 
+# =============================================================================
+# Progress / SSE
+# =============================================================================
+
 @app.route("/api/progress", methods=["GET"])
 def get_progress():
-    runtime = config.get_runtime_snapshot()
-    return jsonify(
-        {
-            "is_running": runtime["is_running"],
-            "current_state": runtime["current_state"],
-            "raids_completed": runtime["raids_completed"],
-            "raids_target": runtime["raids_target"],
-            "current_turn": runtime["current_turn"],
-            "turn_target": runtime["turn_target"],
-            "current_raid_name": runtime["current_raid_name"],
-            "boss_hp_at_entry": runtime["boss_hp_at_entry"],
-            "task_start_time": runtime["task_start_time"],
-        }
-    )
+    if runtime:
+        snapshot = runtime.get_current_progress_snapshot()
+        snapshot["queue"] = _get_queue_snapshot()
+        return jsonify(snapshot)
+    return jsonify({
+        "is_running": False,
+        "current_state": "idle",
+        "raids_completed": 0,
+        "raids_target": 0,
+        "current_turn": 0,
+        "turn_target": 0,
+        "current_raid_name": "",
+        "current_raid_id": "",
+        "boss_hp_at_entry": 0.0,
+        "queue": [],
+    })
 
 
 @app.route("/api/events")
@@ -201,6 +322,124 @@ def sse():
         for msg in announcer.listen():
             yield f"data: {msg}\n\n"
     return Response(stream(), mimetype="text/event-stream")
+
+
+# =============================================================================
+# Task Creator / Event Discovery
+# =============================================================================
+
+@app.route("/api/discover_event", methods=["POST"])
+def discover_event():
+    """
+    Visit an event URL and scan for battle buttons.
+    Returns a flat list of discovered buttons with placeholder types.
+    """
+    global engine_ready
+    if not engine_ready:
+        return jsonify({"status": "error", "message": "Engine not ready"}), 503
+
+    data = request.json or {}
+    event_url = data.get("event_url")
+    if not event_url:
+        return jsonify({"status": "error", "message": "event_url required"}), 400
+
+    try:
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.common.exceptions import TimeoutException
+
+        driver = runtime.navigator.driver
+        driver.get(event_url)
+
+        # Wait for page to load
+        time.sleep(2)
+
+        battles = []
+
+        # Strategy 1: look for event raid buttons
+        try:
+            event_btns = driver.find_elements(By.CSS_SELECTOR, ".btn-event-raid")
+            for btn in event_btns:
+                battles.append({
+                    "type": "placeholder",
+                    "raw_text": btn.text.strip(),
+                    "selector": ".btn-event-raid",
+                })
+        except:
+            pass
+
+        # Strategy 2: look for quest start buttons inside event frames
+        try:
+            quest_btns = driver.find_elements(By.CSS_SELECTOR, ".prt-quest-frame .btn-quest-start")
+            for btn in quest_btns:
+                qid = btn.get_attribute("data-quest-id") or ""
+                # Try to find thumbnail image for type hint
+                img_src = ""
+                try:
+                    img = btn.find_element(By.CSS_SELECTOR, "img.img-quest-thumbnail")
+                    img_src = img.get_attribute("src") or ""
+                except:
+                    pass
+
+                battles.append({
+                    "type": "placeholder",
+                    "raw_text": btn.text.strip(),
+                    "quest_id": qid,
+                    "img_src": img_src,
+                    "selector": ".prt-quest-frame .btn-quest-start",
+                })
+        except:
+            pass
+
+        # Strategy 3: generic quest buttons
+        try:
+            generic_btns = driver.find_elements(By.CSS_SELECTOR, ".btn-quest-start")
+            for btn in generic_btns:
+                if btn not in [b.get("element") for b in battles]:
+                    battles.append({
+                        "type": "placeholder",
+                        "raw_text": btn.text.strip(),
+                        "quest_id": btn.get_attribute("data-quest-id") or "",
+                        "selector": ".btn-quest-start",
+                    })
+        except:
+            pass
+
+        return jsonify({"status": "ok", "battles": battles, "event_url": event_url})
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/save_task", methods=["POST"])
+def save_task():
+    """Save a task definition to tasks/ directory."""
+    data = request.json or {}
+    filename = data.get("filename")
+    if not filename:
+        return jsonify({"status": "error", "message": "filename required"}), 400
+
+    if not filename.endswith(".json"):
+        filename += ".json"
+
+    tasks_dir = _get_tasks_dir()
+    tasks_dir.mkdir(exist_ok=True)
+    task_path = tasks_dir / filename
+
+    task_def = {
+        "task_type": data.get("task_type", "quest"),
+        "task_config": data.get("task_config", {}),
+        "actions": data.get("actions", []),
+        "exit_condition": data.get("exit_condition", {"type": "raid_count", "value": 10}),
+    }
+
+    try:
+        with open(task_path, "w", encoding="utf-8") as f:
+            json.dump(task_def, f, indent=2)
+        return jsonify({"status": "ok", "filename": filename})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":

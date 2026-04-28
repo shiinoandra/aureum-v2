@@ -1,19 +1,21 @@
-from enum import Enum 
-from typing import Dict 
+from enum import Enum
+from typing import Dict
 import re
 
+
 class State(Enum):
-    IDLE="idle"
-    MAIN_MENU="main_menu"
-    RAID_LIST="raid_list"
-    RAID_SUMMON_SELECT="raid_summon_select"
-    RAID_BATTLE="raid_battle"
-    RAID_RESULT="raid_result"
-    RAID_UNCLAIMED="raid_unclaimed"
-    QUEST_SUMMON_SELECT="quest_summon_select"
-    QUEST_BATTLE="quest_battle"
-    QUEST_RESULT="quest_result"
-    ERROR_RECOVERY="error_recovery"
+    IDLE = "idle"
+    MAIN_MENU = "main_menu"
+    RAID_LIST = "raid_list"
+    RAID_SUMMON_SELECT = "raid_summon_select"
+    RAID_BATTLE = "raid_battle"
+    RAID_RESULT = "raid_result"
+    RAID_UNCLAIMED = "raid_unclaimed"
+    QUEST_SUMMON_SELECT = "quest_summon_select"
+    QUEST_BATTLE = "quest_battle"
+    QUEST_RESULT = "quest_result"
+    ERROR_RECOVERY = "error_recovery"
+
 
 STATE_URL_PATTERNS: Dict[State, str] = {
     State.MAIN_MENU: r"https://game\.granbluefantasy\.jp/#mypage/.*",
@@ -27,11 +29,9 @@ STATE_URL_PATTERNS: Dict[State, str] = {
     State.QUEST_RESULT: r"https://game\.granbluefantasy\.jp/#result/.*",
 }
 
-def detect_state(url:str)->State:
-    for state,pattern in STATE_URL_PATTERNS.items():
-        if re.match(pattern,url):
+
+def detect_state(url: str) -> State:
+    for state, pattern in STATE_URL_PATTERNS.items():
+        if re.match(pattern, url):
             return state
     return State.IDLE
-
-
-

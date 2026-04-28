@@ -15,9 +15,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-from context import ActionContext, ActionRegistry
-from navigator import Navigator
-from config_manager import ConfigManager
+from action.action_context import ActionContext
+from action.action_registry import ActionRegistry
+from infra.navigator import Navigator
 
 
 # =============================================================================
@@ -100,12 +100,8 @@ def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
 def action_select_raid(params, context: ActionContext):
     """
     Select a raid from the list based on HP threshold filter.
-
-    Params:
-        - filter: "prefer_Lv100" (filters raids with HP >= 60%)
     """
-    config = context.config
-    battle_config = config.get_battle_config()
+    task_config = context.task_config
     nav = context.navigator
 
     # Navigate to raid list if not already there
@@ -113,7 +109,6 @@ def action_select_raid(params, context: ActionContext):
         nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
         nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
 
-    # Check for popups
     # Human-like browsing scroll
     _perform_browse_scrolling(nav)
 
@@ -130,7 +125,6 @@ def action_select_raid(params, context: ActionContext):
 
     for raid in raid_rooms:
         try:
-            # --- Extract metadata ---
             raid_info = {
                 "raid_id": raid.get_attribute("data-raid-id"),
                 "quest_id": raid.get_attribute("data-quest-id"),
@@ -140,7 +134,7 @@ def action_select_raid(params, context: ActionContext):
                 "players_max": 0,
                 "element": raid,
             }
-            # Fallback name if data-chapter-name is empty
+            # Fallback name
             if not raid_info["name"]:
                 try:
                     raid_info["name"] = raid.find_element(
@@ -154,7 +148,8 @@ def action_select_raid(params, context: ActionContext):
                 By.CSS_SELECTOR, ".prt-raid-gauge-inner"
             ).get_attribute("style")
             raid_info["hp_percent"] = float(hp_style.split("width:")[1].split("%")[0])
-            # Player count: "5/30" → [5, 30]
+
+            # Player count
             try:
                 flees_text = raid.find_element(
                     By.CSS_SELECTOR, ".prt-flees-in"
@@ -163,22 +158,21 @@ def action_select_raid(params, context: ActionContext):
                 raid_info["players_current"] = int(current_str)
                 raid_info["players_max"] = int(max_str)
             except (NoSuchElementException, ValueError, IndexError):
-                # If player count is missing, default to 0/30 (accept it)
                 raid_info["players_current"] = 0
                 raid_info["players_max"] = 30
 
             # HP range
             if not (
-                battle_config.min_hp_threshold
+                task_config.min_hp_threshold
                 <= raid_info["hp_percent"]
-                <= battle_config.max_hp_threshold
+                <= task_config.max_hp_threshold
             ):
                 continue
             # Player count range
             if not (
-                battle_config.min_people
+                task_config.min_people
                 <= raid_info["players_current"]
-                <= battle_config.max_people
+                <= task_config.max_people
             ):
                 continue
 
@@ -197,10 +191,10 @@ def action_select_raid(params, context: ActionContext):
         f"[i] Selected raid with {target['hp_percent']}% HP and {target['players_current']} player"
     )
 
-    # Publish raid metadata to runtime state
-    context.config.current_raid_name = target.get("name", "Unknown Raid")
-    context.config.current_raid_id = target.get("raid_id", "")
-    context.config.boss_hp_at_entry = target.get("hp_percent", 0.0)
+    # Publish raid metadata to task progress
+    context.task_progress.current_raid_name = target.get("name", "Unknown Raid")
+    context.task_progress.current_raid_id = target.get("raid_id", "")
+    context.task_progress.boss_hp_at_entry = target.get("hp_percent", 0.0)
 
     nav.click_element(target["element"])
     return ActionContext.RESULT_SUCCESS
@@ -212,13 +206,12 @@ def action_select_summon(params, context: ActionContext):
     Select summon from supporter selection screen.
     Priority order:
     1. Check for auto-summon preset (GBF internal system)
-    2. Try each summon in config.summon_priority (first → last)
-       - Supports optional 'level' (exact match if provided, any level if omitted/null)
+    2. Try each summon in config.summon_priority
     3. Fallback: select first summon in type0 tab
     """
     nav = context.navigator
-    config = context.config.get_battle_config()
-    summon_list = config.summon_priority
+    summon_list = context.task_config.summon_priority
+
     # Step 1: Check auto-summon preset
     try:
         WebDriverWait(nav.driver, 2).until(
@@ -228,6 +221,7 @@ def action_select_summon(params, context: ActionContext):
         return ActionContext.RESULT_SUCCESS
     except TimeoutException:
         print("[i] Auto Summon not available - searching preferred summons...")
+
     # Step 2: Try each preferred summon in priority order
     for summon in summon_list:
         name = summon.get("name")
@@ -239,7 +233,6 @@ def action_select_summon(params, context: ActionContext):
             + (f" ({level})" if level else " (any level)")
         )
         try:
-            # Build XPath based on whether level is specified
             if level:
                 xpath = f"""
                 //div[contains(@class, 'supporter-summon') and
@@ -263,6 +256,7 @@ def action_select_summon(params, context: ActionContext):
         except Exception as e:
             print(f"[!] Error selecting {name}: {e}")
             continue
+
     # Step 3: Fallback - select first summon in type0 tab
     print("[!] No preferred summons found — using first available summon.")
     try:
@@ -286,11 +280,8 @@ def action_select_summon(params, context: ActionContext):
 
 @ActionRegistry.register("join_battle")
 def action_join_battle(params, context: ActionContext):
-    """
-    Click the quest start button to join battle.
-    """
+    """Click the quest start button to join battle."""
     nav = context.navigator
-
     try:
         quest_start_btn = nav.wait_for_clickable(
             By.CSS_SELECTOR, ".btn-usual-ok.se-quest-start", timeout=10
@@ -306,20 +297,22 @@ def action_join_battle(params, context: ActionContext):
 @ActionRegistry.register("do_battle")
 def action_do_battle(params, context: ActionContext):
     nav = context.navigator
-    config = context.config
-    battle_config = config.get_battle_config()
+    task_config = context.task_config
     fullauto_clicked = 0
 
     # Pre-battle full auto (one-time, before loop)
-    if battle_config.pre_fa and fullauto_clicked==0:
-        pre_fa_elm = WebDriverWait(nav.driver, 2).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, ".prt-auto-setting")
-                    )
+    if task_config.pre_fa and fullauto_clicked == 0:
+        try:
+            pre_fa_elm = WebDriverWait(nav.driver, 2).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, ".prt-auto-setting")
                 )
-        if pre_fa_elm:
-            nav.click_onthespot()
-            fullauto_clicked=1
+            )
+            if pre_fa_elm:
+                nav.click_onthespot()
+                fullauto_clicked = 1
+        except TimeoutException:
+            pass
 
     # Initial battle UI wait
     try:
@@ -329,7 +322,7 @@ def action_do_battle(params, context: ActionContext):
     except TimeoutException:
         return ActionContext.RESULT_FAILED
 
-    if battle_config.trigger_skip:
+    if task_config.trigger_skip:
         nav.driver.refresh()
         try:
             nav.wait_for_element(
@@ -344,11 +337,8 @@ def action_do_battle(params, context: ActionContext):
 
     start_time = time.time()
     while time.time() - start_time < 300:
+        context.task_progress.current_turn = current_turn
 
-        
-     
-
-        context.config.current_turn = current_turn
         if (
             "#result_multi/" in nav.get_current_url()
             or "#result/" in nav.get_current_url()
@@ -359,19 +349,15 @@ def action_do_battle(params, context: ActionContext):
         if battle_ended:
             if click_target:
                 nav.click_element(click_target)
-            context.config.raids_completed += 1
-            context.config.battle_finished = True
-            # print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
+            context.battle_finished = True
             return ActionContext.RESULT_SUCCESS
 
-
-        # === 2. Turn limit reached? ===
-        if not battle_config.until_finish and current_turn > battle_config.turn:
-            context.config.raids_completed += 1
-            print(f"[→] Turn limit reached ({battle_config.turn}).")
+        # Turn limit reached?
+        if not task_config.until_finish and current_turn > task_config.turn:
+            print(f"[→] Turn limit reached ({task_config.turn}).")
             return ActionContext.RESULT_SUCCESS
 
-        # === 3. Click full auto if not yet clicked this turn ===
+        # Click full auto if not yet clicked this turn
         if fullauto_clicked == 0:
             try:
                 fullauto_btn = nav.wait_for_clickable(
@@ -387,7 +373,7 @@ def action_do_battle(params, context: ActionContext):
                 nav.wait(0.2, 0.3)
                 continue
 
-        # === 4. CRITICAL: Check attack button ON THE SAME PAGE (before refresh) ===
+        # Check attack button ON THE SAME PAGE (before refresh)
         try:
             atk_btn = nav.wait_for_element(
                 By.CSS_SELECTOR, ".btn-attack-start", timeout=2
@@ -399,24 +385,25 @@ def action_do_battle(params, context: ActionContext):
                 nav.wait(0.3, 0.5)
 
                 if (
-                    not battle_config.until_finish
-                    and current_turn > battle_config.turn
+                    not task_config.until_finish
+                    and current_turn > task_config.turn
                 ):
-                    context.config.raids_completed += 1
-                    # print(f"[→] Battle finished. Raids completed: {context.raids_completed}")
                     return ActionContext.RESULT_SUCCESS
 
                 # Refresh to skip attack animation / reset UI for next turn
                 nav.driver.refresh()
-                if battle_config.pre_fa and fullauto_clicked ==0:
-                    pre_fa_elm = WebDriverWait(nav.driver, 2).until(
+                if task_config.pre_fa and fullauto_clicked == 0:
+                    try:
+                        pre_fa_elm = WebDriverWait(nav.driver, 2).until(
                             EC.presence_of_element_located(
                                 (By.CSS_SELECTOR, ".prt-auto-setting")
                             )
                         )
-                    if pre_fa_elm:
-                        nav.click_onthespot()
-                        fullauto_clicked=1
+                        if pre_fa_elm:
+                            nav.click_onthespot()
+                            fullauto_clicked = 1
+                    except TimeoutException:
+                        pass
                 try:
                     nav.wait_for_element(
                         By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
@@ -424,26 +411,27 @@ def action_do_battle(params, context: ActionContext):
                     print("[✓] Battle UI restored after turn refresh")
                 except TimeoutException:
                     print("[×] Battle UI did not return after turn refresh")
-
                 continue
         except TimeoutException:
-            # Attack button not found - might be battle ended or loading
             pass
 
-        # === 5. refresh=true: refresh to skip skill animations ===
-        if battle_config.refresh:
+        # refresh=true: refresh to skip skill animations
+        if task_config.refresh:
             print("[i] Refreshing to skip skill animations...")
-            fullauto_clicked = 0  # Page reloads, need to click again
+            fullauto_clicked = 0
             nav.driver.refresh()
-            if battle_config.pre_fa and fullauto_clicked ==0:
-                pre_fa_elm = WebDriverWait(nav.driver, 2).until(
+            if task_config.pre_fa and fullauto_clicked == 0:
+                try:
+                    pre_fa_elm = WebDriverWait(nav.driver, 2).until(
                         EC.presence_of_element_located(
                             (By.CSS_SELECTOR, ".prt-auto-setting")
                         )
                     )
-                if pre_fa_elm:
-                    nav.click_onthespot()
-                    fullauto_clicked=1
+                    if pre_fa_elm:
+                        nav.click_onthespot()
+                        fullauto_clicked = 1
+                except TimeoutException:
+                    pass
             try:
                 nav.wait_for_element(
                     By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
@@ -453,7 +441,7 @@ def action_do_battle(params, context: ActionContext):
                 print("[×] Battle UI did not return after animation refresh")
             continue
 
-        # === 6. refresh=false: let animations play out ===
+        # refresh=false: let animations play out
         else:
             nav.wait(0.2, 0.3)
             # check A
@@ -508,9 +496,7 @@ def action_do_battle(params, context: ActionContext):
 
 @ActionRegistry.register("refresh_raid_list")
 def action_refresh_raid_list(params, context: ActionContext):
-    """
-    Click the raid list refresh button.
-    """
+    """Click the raid list refresh button."""
     nav = context.navigator
     print("refreshing raid list")
 
@@ -532,11 +518,8 @@ def action_refresh_raid_list(params, context: ActionContext):
 
 @ActionRegistry.register("clean_raid_queue")
 def action_clean_raid_queue(params, context: ActionContext):
-    """
-    Process and clear pending raids from unclaimed list.
-    """
+    """Process and clear pending raids from unclaimed list."""
     nav = context.navigator
-
     nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
 
     try:
@@ -556,13 +539,11 @@ def action_clean_raid_queue(params, context: ActionContext):
                 print("[✓] No more pending raids")
                 break
 
-            # Select first raid in list
             raid = raids[random.randint(0, len(raids) - 1)]
             raid_id = raid.get_attribute("data-raid-id")
             print(f"[i] Processing pending raid {raid_id}")
             nav.click_element(raid)
 
-            # Claim its rewards
             try:
                 ok_btn = nav.wait_for_element(
                     By.CSS_SELECTOR, ".btn-usual-ok", timeout=2
@@ -574,7 +555,6 @@ def action_clean_raid_queue(params, context: ActionContext):
             except:
                 pass
 
-            # Go back to unclaimed list
             nav.driver.get(
                 "https://game.granbluefantasy.jp/#quest/assist/unclaimed/0/0"
             )
@@ -600,9 +580,7 @@ def action_clean_raid_queue(params, context: ActionContext):
 
 @ActionRegistry.register("go_to_raid_list")
 def action_go_to_raid_list(params, context: ActionContext):
-    """
-    Navigate to the raid list page.
-    """
+    """Navigate to the raid list page."""
     nav = context.navigator
     nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
     nav.wait_for_element(By.CSS_SELECTOR, "#prt-search-list", timeout=10)
@@ -612,13 +590,22 @@ def action_go_to_raid_list(params, context: ActionContext):
 
 @ActionRegistry.register("go_to_main_menu")
 def action_go_to_main_menu(params, context: ActionContext):
-    """
-    Navigate to main menu (mypage).
-    """
+    """Navigate to main menu (mypage)."""
     nav = context.navigator
     nav.driver.get("https://game.granbluefantasy.jp/#mypage/")
     nav.wait(1, 2)
     print("[i] Arrived at main menu")
+    return ActionContext.RESULT_SUCCESS
+
+
+@ActionRegistry.register("go_to_url")
+def action_go_to_url(params, context: ActionContext):
+    """Navigate to an arbitrary URL. Used by quests and events."""
+    nav = context.navigator
+    url = params.get("url", "")
+    if url:
+        nav.driver.get(url)
+        print(f"[i] Navigated to {url}")
     return ActionContext.RESULT_SUCCESS
 
 

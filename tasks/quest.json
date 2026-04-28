@@ -1,7 +1,19 @@
 {
   "task_type": "quest",
+  "task_config": {
+    "turn": 50,
+    "refresh": false,
+    "until_finish": true,
+    "trigger_skip": false,
+    "pre_fa": false,
+    "min_hp_threshold": 0,
+    "max_hp_threshold": 100,
+    "min_people": 1,
+    "max_people": 30,
+    "summon_priority": []
+  },
   "actions": [
-    {"name": "select_quest", "params": {"quest_id": "story_1"}},
+    {"name": "go_to_url", "params": {"url": ""}},
     {"name": "select_summon", "params": {}},
     {"name": "join_battle", "params": {}},
     {"name": "do_battle", "params": {"mode": "full_auto"}}
