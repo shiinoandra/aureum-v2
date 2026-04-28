@@ -2,18 +2,27 @@
   "task_type": "raid",
   "task_config": {
     "turn": 1,
-    "refresh": false,
+    "refresh": true,
     "until_finish": false,
-    "trigger_skip": true,
+    "trigger_skip": false,
     "pre_fa": false,
     "min_hp_threshold": 60,
     "max_hp_threshold": 100,
     "min_people": 1,
-    "max_people": 30,
+    "max_people": 12,
     "summon_priority": [
-      {"name": "Titan", "level": "Lvl 250"},
-      {"name": "Huanglong", "level": "Lvl 100"},
-      {"name": "Kaguya", "level": "Lvl 150"}
+      {
+        "level": "Lvl 250",
+        "name": "Titan"
+      },
+      {
+        "level": "Lvl 100",
+        "name": "Huanglong"
+      },
+      {
+        "level": "Lvl 150",
+        "name": "Kaguya"
+      }
     ]
   },
   "actions": [
@@ -21,42 +30,49 @@
       "name": "refresh_raid_list",
       "params": {},
       "transitions": {
-        "success": "select_raid",
-        "failed": "refresh_raid_list"
+        "failed": "refresh_raid_list",
+        "success": "select_raid"
       }
     },
     {
       "name": "select_raid",
-      "params": {"filter": "prefer_Lv100"},
+      "params": {
+        "filter": "prefer_Lv100"
+      },
       "transitions": {
-        "success": "select_summon",
-        "failed": "refresh_raid_list"
+        "failed": "refresh_raid_list",
+        "success": "select_summon"
       }
     },
     {
       "name": "select_summon",
       "params": {},
       "transitions": {
-        "success": "join_battle",
-        "failed": "select_raid"
+        "failed": "select_raid",
+        "success": "join_battle"
       }
     },
     {
       "name": "join_battle",
       "params": {},
       "transitions": {
-        "success": "do_battle",
-        "failed": "select_raid"
+        "failed": "select_raid",
+        "success": "do_battle"
       }
     },
     {
       "name": "do_battle",
-      "params": {"mode": "full_auto"},
+      "params": {
+        "mode": "full_auto"
+      },
       "transitions": {
-        "success": "select_raid",
-        "failed": "select_raid"
+        "failed": "select_raid",
+        "success": "select_raid"
       }
     }
   ],
-  "exit_condition": {"type": "raid_count", "value": 1000}
+  "exit_condition": {
+    "type": "raid_count",
+    "value": 10
+  }
 }

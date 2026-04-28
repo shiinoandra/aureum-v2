@@ -6,7 +6,8 @@ from enum import Enum
 import time
 import random
 
-from action.action_context import ActionContext, ActionRegistry
+from action.action_context import ActionContext
+from action.action_registry import ActionRegistry
 from action.actions import _check_and_handle_popup
 
 
