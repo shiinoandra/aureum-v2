@@ -167,17 +167,10 @@ class Navigator:
 
     def _move_away_from_point(self,center_x:float,center_y:float):
         screen_w, screen_h = pyautogui.size()
-<<<<<<< HEAD
-        
-        # Element center
-        center_x = rect["x"] + rect["width"] / 2
-        center_y = rect["y"] + rect["height"] / 2
+    
         
         # Random offset within radius (-150 to +150 px from center)
         radius = random.randint(30, 80)
-=======
-        radius = random.randint(30, 100)
->>>>>>> 1adb1eba5c885965aaff2b9a8a12935cdc0253b7
         angle = random.uniform(0, 2 * math.pi)
         offset_x = int(radius * math.cos(angle))
         offset_y = int(radius * math.sin(angle))
