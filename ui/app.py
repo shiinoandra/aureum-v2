@@ -64,9 +64,11 @@ def create_browser():
         user_data_dir = os.path.expanduser("~/.config/google-chrome/selenium_profile")
     os.makedirs(user_data_dir, exist_ok=True)
     driver = uc.Chrome(
-        options=chrome_options, user_data_dir=user_data_dir, version_main=146
+        options=chrome_options, user_data_dir=user_data_dir, version_main=145
     )
     return driver
+
+    
 
 
 def init_engine():

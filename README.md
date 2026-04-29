@@ -19,15 +19,20 @@ Then open `http://127.0.0.1:5000` in your browser.
 Aureum automates repetitive gameplay loops in Granblue Fantasy:
 - **Raid farming**: Join public raids, execute a set number of turns, then hop to the next one
 - **Quest battles**: Start your own quests and run them to completion
+- **Event battles**: Scan event pages, generate task JSONs, and farm event quests
 - **Human-like interaction**: Bezier-curve mouse movement, randomized delays, scroll adjustments
 
 ## Architecture
 
 - **Flask** serves the control panel and exposes a REST API + SSE stream
-- **ConfigManager** (singleton) holds all shared state between the automation thread and the UI
-- **CoreEngine** runs the task loop in a background daemon thread
+- **RuntimeManager** owns the task queue, global config, and automation lifecycle
+- **TaskManager** owns per-task progress, exit conditions, and drop logging
 - **TaskExecutor** drives an FSM-based action pipeline defined in JSON task files
+- **Task Creator** (UI tab) allows editing battle parameters and generating event task JSONs
 - **Navigator** handles Selenium + PyAutoGUI browser interaction
+
+Each task JSON is **self-contained** and embeds its own `task_config` (turn, refresh, summon priority, etc.).
+There is no global `config/default.json` — task files in `tasks/` are the single source of truth.
 
 See `AGENTS.md` for full architecture documentation.
 

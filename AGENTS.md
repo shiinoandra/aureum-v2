@@ -3,12 +3,11 @@
 ## General Workflow and Guideline
 1. Analyze project, read docs, understand tech stacks and requirements
 2. Guide, assist, give feedback on code and implementation
-3. **CANNOT edit code directly** (plan mode) — provide snippets for user to implement
-4. Build-mode agents may edit code directly when explicitly authorized
-5. After user implements, review and evaluate for correctness
-6. Update AGENTS.md to document progress and design decisions
-7. Suggest better approaches if needed
-8. Thanks for the collaboration
+3. Build-mode agents may edit code directly when explicitly authorized
+4. After user implements, review and evaluate for correctness
+5. Update AGENTS.md to document progress and design decisions
+6. Suggest better approaches if needed
+7. Thanks for the collaboration
 
 ## Project Overview
 
@@ -25,50 +24,20 @@ Browser automation project for automating Granblue Fantasy. Transformed from a s
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         UI Layer                                 │
-│            (Vanilla JS + HTML, SSE client)                       │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │ HTTP / SSE
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    Flask (ui/app.py)                             │
-│  - Owns CoreEngine + Navigator                                   │
-│  - /api/start, /api/stop, /api/config, /api/progress            │
-│  - /api/events (SSE)                                             │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │ reads / writes
-┌─────────────────────────▼───────────────────────────────────────┐
-│              ConfigManager (Thread-safe Singleton)               │
-│  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
-│  │   BattleConfig      │    │      RuntimeState               │ │
-│  │  (static settings)  │    │  (live automation state)        │ │
-│  │  - turn, refresh    │    │  - is_running                   │ │
-│  │  - until_finish     │    │  - current_state                │ │
-│  │  - think_time_*     │    │  - raids_completed / target     │ │
-│  │  - summon_priority  │    │  - current_turn / target        │ │
-│  │  - min/max hp & ppl │    │  - last_known_url               │ │
-│  └─────────────────────┘    └─────────────────────────────────┘ │
-└──────────┬──────────────────────────────┬───────────────────────┘
-           │ writes                       │ writes
-           ▼                              ▼
-┌───────────────────────┐    ┌───────────────────────────────┐
-│     Task Executor      │    │      State Machine            │
-│  (FSM-based flow)      │    │   (recovery & detection)      │
-│  - task definition     │    │   - detect state from URL    │
-│  - action registry     │    │   - recovery handlers        │
-│  - transitions        │    │   - state transitions        │
-└───────────┬───────────┘    └───────────────────────────────┘
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Core Engine                                 │
-│              (Task execution + state management)                │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    Navigator                                     │
-│         (Browser automation: Selenium + PyAutoGUI)                │
-└─────────────────────────────────────────────────────────────────┘
+RuntimeManager              ← 1 per app lifecycle. Owns queue, global config, navigator.
+│                             Decides: start/stop scheduling, failure policy, captcha halt.
+├── GlobalConfig            ← Truly global settings (think_time, etc.)
+├── Navigator               ← Shared Selenium driver (NOT thread-safe, single thread only)
+└── task_queue: deque[Task]
+    │
+    └── [dequeue] ──► TaskManager     ← 1 per running task. Owns task lifecycle.
+            │                         Decides: when this task ends, retry logic,
+            │                         post-raid logging, progress tracking.
+            ├── Task                 ← Immutable definition: type, config, actions, exit_condition
+            ├── TaskProgress         ← Mutable state: raids_completed, current_turn, status
+            ├── TaskExecutor         ← Pure FSM runner. Decides: action transitions.
+            │   └── ActionContext    ← Transient envelope per task. Holds refs only.
+            └── DropLogger (stub)    ← Post-raid DOM parsing (future)
 ```
 
 ## Entry Point
@@ -82,42 +51,34 @@ This starts Flask on `http://127.0.0.1:5000` and launches the browser in a backg
 
 ## Data Flow & State Ownership
 
-### Single Source of Truth: ConfigManager
+### Ownership Rules
 
-`ConfigManager` is a thread-safe singleton that owns **all** data crossing the automation/UI boundary. It is divided into two dataclasses:
-
-| Dataclass | Purpose | Thread Lock | Persisted |
-|-----------|---------|-------------|-----------|
-| `BattleConfig` | Static user settings (turn, refresh, etc.) | `_config_lock` | Yes → `config/default.json` |
-| `RuntimeState` | Live automation state (progress, is_running, etc.) | `_runtime_lock` | No (in-memory only) |
+| Layer | Owns | Does NOT Own |
+|-------|------|--------------|
+| **RuntimeManager** | Queue order, GlobalConfig, Navigator, start/stop of automation as a whole | Task-level progress, action transitions, exit conditions |
+| **TaskManager** | Task lifecycle, TaskProgress, retry/backoff, drop logging hook, exit condition check | Queue order, other tasks' progress |
+| **TaskExecutor** | FSM graph traversal, action-to-action transitions, popup detection between actions | Exit condition, progress counting, queue scheduling |
+| **Actions** | DOM interaction, clicks, battle loop logic | Any state beyond `task_progress` writes |
+| **ActionContext** | References to navigator + configs + progress | No logic, no lifecycle decisions |
 
 ### Who Writes What
 
 | Field | Writer | Reader |
 |-------|--------|--------|
-| `BattleConfig.*` | Flask `POST /api/config` | Actions via `get_battle_config()` |
-| `RuntimeState.is_running` | `CoreEngine._run_task_loop` | Flask SSE / API |
-| `RuntimeState.current_state` | `CoreEngine._run_task_loop` (URL detection) | Flask SSE / API |
-| `RuntimeState.raids_completed` | `action_do_battle` via `context.config` | Flask SSE / API |
-| `RuntimeState.current_turn` | `action_do_battle` via `context.config` | Flask SSE / API |
-| `RuntimeState.raids_target` | `CoreEngine._run_task_loop` (from task JSON) | Flask SSE / API |
-| `RuntimeState.turn_target` | `CoreEngine._run_task_loop` (from `BattleConfig.turn`) | Flask SSE / API |
-
-### ActionContext (Transient FSM State Only)
-
-`ActionContext` now holds **only** per-raid-cycle transient state:
-- `navigator`: Navigator instance
-- `config`: ConfigManager singleton (for writing progress directly)
-- `battle_finished`: Flag set when battle ends
-- `last_result`: Last action result for transition logic
-
-**Removed from ActionContext:** `current_turn` and `raids_completed` — these now live in `ConfigManager.RuntimeState`.
+| `GlobalConfig.think_time_*` | Flask `POST /api/save_task` (indirect) | Actions via `context.global_config` |
+| `TaskConfig.*` | Task Creator → saved into task JSON | Actions via `context.task_config` |
+| `TaskProgress.is_running` | `RuntimeManager._run_loop` | Flask SSE / API |
+| `TaskProgress.current_state` | `TaskManager.run()` (URL detection) | Flask SSE / API |
+| `TaskProgress.raids_completed` | `TaskManager._handle_post_cycle()` | Flask SSE / API |
+| `TaskProgress.current_turn` | `action_do_battle` via `context.task_progress` | Flask SSE / API |
+| `TaskProgress.raids_target` | `TaskManager` (from task JSON exit_condition) | Flask SSE / API |
+| `TaskProgress.turn_target` | `TaskManager` (from `TaskConfig.turn`) | Flask SSE / API |
 
 ### Why This Design
 
-- **Unidirectional data flow**: Actions write to ConfigManager → Flask reads from ConfigManager
-- **No sync step**: `CoreEngine` no longer copies `ctx.raids_completed → config.raids_completed`
-- **Thread-safe**: All UI-visible state is protected by `_runtime_lock`
+- **Unidirectional data flow**: Actions write to TaskProgress → Flask reads from TaskManager snapshot
+- **No singletons**: Everything is explicitly passed via constructor
+- **Thread-safe**: `Navigator` is used by one thread only; `TaskProgress` is mutated only by `TaskManager`
 - **Flask isolation**: Flask never touches `engine._running` or `ctx` directly
 
 ## Battle Flow (Raid)
@@ -128,18 +89,18 @@ This starts Flask on `http://127.0.0.1:5000` and launches the browser in a backg
 3. select_summon     → On summon screen, click OK (auto-preset)
 4. join_battle       → Click start button to enter battle
 5. do_battle         → Loop until conditions met:
-   - config.turn turns reached, OR
-   - config.until_finish=true loops until boss dies, OR
+   - task_config.turn turns reached, OR
+   - task_config.until_finish=true loops until boss dies, OR
    - Boss dies early (battle ends automatically)
-   - Writes current_turn and raids_completed directly to ConfigManager
+   - Writes current_turn and battle_finished to ActionContext / TaskProgress
 6. Result screen     → Browser auto-shows when battle ends
-7. Back to step 1   → Repeat for next raid (via core_engine loop)
+7. Back to step 1   → Repeat for next raid (via TaskManager loop)
 ```
 
 ### do_battle Flow Detail
 
 Each turn in battle:
-1. Write `context.config.current_turn = current_turn`
+1. Write `context.task_progress.current_turn = current_turn`
 2. Click full auto button
 3. Wait for attack button to appear (display-on)
 4. Check if attack button is `display-off` (turn processing)
@@ -147,8 +108,9 @@ Each turn in battle:
    - If `refresh=true`: refresh browser immediately, fullauto_clicked=0, next turn
    - If `refresh=false`: wait for attack button to reappear, fullauto_clicked=1, next turn
 6. Click attack button (triggers full auto action sequence)
-7. On battle end: `context.config.raids_completed += 1`
-8. Loop until turn limit or boss dies
+7. On battle end: `context.battle_finished = True`
+8. `TaskManager._handle_post_cycle()` increments `task_progress.raids_completed` once
+9. Loop until turn limit or boss dies
 
 ## Two-Layer System
 
@@ -158,13 +120,14 @@ Defines "what to do" using finite state machine with transitions.
 - Example: `{"success": "select_summon", "failed": "refresh_raid_list"}`
 - Actions return `RESULT_SUCCESS` or `RESULT_FAILED`
 - `exit_condition` is task-level (how many raids to complete)
-- **execute_task runs ONE raid cycle, then returns**
+- **execute_task_cycle runs ONE raid cycle, then returns**
+- If no `transitions` dict is defined, fallback to next action in list (linear workflow)
 
 ### State Machine Layer
 Defines "where am I" - used for recovery when errors occur.
 - Detects current state from URL
 - Recovery: if error, detect current URL → decide next action
-- **Actively updated during `_run_task_loop`** via `detect_state(url)` each raid cycle
+- **Actively updated during `TaskManager.run()`** via `detect_state(url)` each raid cycle
 
 ## State Design
 
@@ -192,6 +155,21 @@ Tasks are defined in JSON files with FSM-based transitions.
 ```json
 {
   "task_type": "raid",
+  "task_config": {
+    "turn": 1,
+    "refresh": false,
+    "until_finish": false,
+    "trigger_skip": true,
+    "pre_fa": false,
+    "min_hp_threshold": 60,
+    "max_hp_threshold": 100,
+    "min_people": 1,
+    "max_people": 30,
+    "summon_priority": [
+      {"name": "Titan", "level": "Lvl 250"},
+      {"name": "Huanglong", "level": "Lvl 100"}
+    ]
+  },
   "actions": [
     {
       "name": "refresh_raid_list",
@@ -234,6 +212,26 @@ Tasks are defined in JSON files with FSM-based transitions.
       }
     }
   ],
+  "exit_condition": {"type": "raid_count", "value": 1000}
+}
+```
+
+### Event Task Example (generated by Task Creator)
+```json
+{
+  "task_type": "event",
+  "task_config": {
+    "turn": 1,
+    "refresh": false,
+    "until_finish": true,
+    "summon_priority": []
+  },
+  "actions": [
+    {"name": "go_to_url", "params": {"url": "https://game.granbluefantasy.jp/#quest/supporter/..."}},
+    {"name": "select_summon", "params": {}},
+    {"name": "join_battle", "params": {}},
+    {"name": "do_battle", "params": {"mode": "full_auto"}}
+  ],
   "exit_condition": {"type": "raid_count", "value": 10}
 }
 ```
@@ -242,16 +240,16 @@ Tasks are defined in JSON files with FSM-based transitions.
 
 | Type | Value | Meaning |
 |------|-------|---------|
-| `raid_count` | Integer (e.g., 10) | Number of raids to complete |
+| `raid_count` | Integer (e.g., 10) | Number of raids / battles to complete |
 | `until_finish` | boolean | Stay until battle completes (for quests) |
 
 **Note**: `turns` is NOT a task-level exit condition. Turns are:
-- A **battle parameter** (`config.turn`) - controls per-battle turn limit
-- Tracked in **`RuntimeState.current_turn`** during the battle loop
+- A **battle parameter** (`task_config.turn`) - controls per-battle turn limit
+- Tracked in **`TaskProgress.current_turn`** during the battle loop
 
 ## Battle Parameters (Config-Level)
 
-Battle parameters are now **embedded in each task JSON** under `task_config`. Each task carries its own settings:
+Battle parameters are **embedded in each task JSON** under `task_config`. Each task carries its own settings:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -306,7 +304,7 @@ def action_function(params, context: ActionContext):
 | `select_raid` | Browse raid list, filter by HP%, select raid | success→select_summon, failed→refresh_raid_list |
 | `select_summon` | Auto-detect preset summon | success→join_battle, failed→select_raid |
 | `join_battle` | Click quest start button | success→do_battle, failed→select_raid |
-| `do_battle` | Full auto loop, writes to `task_progress.raids_completed` | success/failed (follows transitions) |
+| `do_battle` | Full auto loop | success/failed (follows transitions) |
 | `refresh_raid_list` | Click refresh button | success→select_raid, failed→refresh_raid_list |
 | `clean_raid_queue` | Process pending unclaimed raids | success/failed |
 | `go_to_raid_list` | Navigate to `#quest/assist` | success |
@@ -385,7 +383,7 @@ while not stopped:
 
 ## Popup Handling
 
-Popups are handled centrally by `task_executor.execute_task()` between actions.
+Popups are handled centrally by `TaskExecutor.execute_task_cycle()` between actions.
 
 ### Internal Helper
 `_check_and_handle_popup(nav)` - checks for popup, handles if present, returns popup type or None
@@ -400,6 +398,9 @@ Popups are handled centrally by `task_executor.execute_task()` between actions.
 | "toomuch_pending" | Clean raid queue |
 | "ended" | Skip to next raid |
 
+### Stale Element Defense
+`StaleElementReferenceException` is caught in `select_summon`, `join_battle`, `_check_and_handle_popup`, and `_check_and_handle_popup` to handle GBF's SPA transitions where elements go stale mid-poll. A 1.5s stabilization wait after `go_to_url` reduces race conditions.
+
 ## Navigator
 
 Browser automation module handling Selenium + PyAutoGUI.
@@ -409,12 +410,14 @@ Browser automation module handling Selenium + PyAutoGUI.
 - `click_element(element, fast=False)`: Human-like click using bezier curves with scrollIntoView
 - `_human_move(end_pos)`: Bezier curve mouse movement
 - `_fast_move(end_pos)`: Linear mouse movement with overshoot
+- `_move_away(element)`: Move mouse away from element center (radius-based randomness)
+- `_move_away_from_point(center_x, center_y)`: Move mouse away from arbitrary coordinates (used by `click_onthespot`)
 - `get_element_rect(element)`: Get element position/size
 - `refresh()`: Browser refresh
 - `wait(min_time, max_time)`: Random human-like delays
 - `wait_for_element(by, selector, timeout)`: Wait for element
 - `wait_for_clickable(by, selector, timeout)`: Wait for clickable element
-- `click_onthespot()`: Click at current mouse position after a short delay
+- `click_onthespot()`: Click at current mouse position after a short delay, then 50% chance to `_move_away_from_point`
 
 ### Click Element Behavior
 1. `scrollIntoView({block: 'center', inline: 'nearest'})` - bring element into view
@@ -449,7 +452,7 @@ HTTP endpoints for UI↔core communication:
 | `/api/save_task` | POST | Write task JSON to `tasks/` directory |
 
 ### Real-Time Updates (SSE)
-A background thread (`_progress_monitor`) pushes `RuntimeState` snapshots + queue state to all connected SSE clients every 500ms. The frontend auto-reconnects on disconnect.
+A background thread (`_progress_monitor`) pushes `TaskProgress` snapshots + queue state to all connected SSE clients every 500ms. The frontend auto-reconnects on disconnect.
 
 ### Start/Stop Control Flow
 1. User adds tasks to queue via **Main** tab → `POST /api/enqueue`
@@ -470,26 +473,32 @@ A background thread (`_progress_monitor`) pushes `RuntimeState` snapshots + queu
 ├── requirements.txt       # Python dependencies
 ├── tasks/                 # Self-contained task JSONs (single source of truth)
 │   ├── raid.json          # Raid task definition
-│   └── quest.json         # Quest task definition
+│   ├── quest.json         # Quest task definition
+│   └── *.json             # Generated event tasks
 ├── src/
 │   ├── __init__.py
 │   ├── main.py            # Legacy standalone entry point
 │   ├── runtime/
+│   │   ├── __init__.py
 │   │   ├── global_config.py
 │   │   └── runtime_manager.py
 │   ├── task/
+│   │   ├── __init__.py
 │   │   ├── task.py
 │   │   ├── task_progress.py
 │   │   ├── task_manager.py
 │   │   └── task_executor.py
 │   ├── action/
+│   │   ├── __init__.py
 │   │   ├── action_context.py
 │   │   ├── action_registry.py
 │   │   └── actions.py
 │   ├── domain/
+│   │   ├── __init__.py
 │   │   ├── state_machine.py
 │   │   └── drop_logger.py
 │   └── infra/
+│       ├── __init__.py
 │       └── navigator.py
 └── ui/
     ├── app.py             # Flask web interface (main entry point)
@@ -502,90 +511,36 @@ A background thread (`_progress_monitor`) pushes `RuntimeState` snapshots + queu
 The `hihihori3.py` contains reference implementations:
 - **NavigationHelper**: Click with bezier curves, scrollIntoView adjustment
 - **BattleHelper**: Summon selection, battle joining, full auto battle
-- **RaidHelper**: Raid picking (HP filter), popup handling, raid cleanup
+- **RaidHelper**: Raid picking (HP filter), popup handling, raid cleanup, HTML drop logging
 - **gwHelper**: Guild war battle with popup handling
 - **freeQuestHelper**: Free quest automation
 
 ---
 
-# Architecture Rewrite v2 (architecture-rewrite branch)
-
-## Motivation
-
-The previous architecture suffered from **convoluted ownership**:
-- `ConfigManager` singleton held both static config AND runtime progress, causing confusion about who writes what
-- `CoreEngine` mixed task scheduling, task execution, and state detection in one class
-- `TaskExecutor` checked exit conditions despite not owning the task lifecycle
-- `ActionContext` pointed to a global singleton, making per-task progress impossible
-- Flask read from a singleton that had no concept of "which task is running"
-
-The rewrite introduces a **strict three-level hierarchy** where each level has a single, clear responsibility.
-
----
-
-## New Hierarchy
-
-```
-RuntimeManager              ← 1 per app lifecycle. Owns queue, global config, navigator.
-│                             Decides: start/stop scheduling, failure policy, captcha halt.
-├── GlobalConfig            ← Truly global settings (think_time, etc.)
-├── Navigator               ← Shared Selenium driver (NOT thread-safe, single thread only)
-└── task_queue: deque[Task]
-    │
-    └── [dequeue] ──► TaskManager     ← 1 per running task. Owns task lifecycle.
-            │                         Decides: when this task ends, retry logic,
-            │                         post-raid logging, progress tracking.
-            ├── Task                 ← Immutable definition: type, config, actions, exit_condition
-            ├── TaskProgress         ← Mutable state: raids_completed, current_turn, status
-            ├── TaskExecutor         ← Pure FSM runner. Decides: action transitions.
-            │   └── ActionContext    ← Transient envelope per task. Holds refs only.
-            └── DropLogger (stub)    ← Post-raid DOM parsing (future)
-```
-
----
-
-## Ownership Rules
-
-| Layer | Owns | Does NOT Own |
-|-------|------|--------------|
-| **RuntimeManager** | Queue order, GlobalConfig, Navigator, start/stop of automation as a whole | Task-level progress, action transitions, exit conditions |
-| **TaskManager** | Task lifecycle, TaskProgress, retry/backoff, drop logging hook, exit condition check | Queue order, other tasks' progress |
-| **TaskExecutor** | FSM graph traversal, action-to-action transitions, popup detection between actions | Exit condition, progress counting, queue scheduling |
-| **Actions** | DOM interaction, clicks, battle loop logic | Any state beyond `task_progress` writes |
-| **ActionContext** | References to navigator + configs + progress | No logic, no lifecycle decisions |
-
----
-
 ## Key Design Decisions
 
-### 1. Task = Self-Contained Unit
+### Task = Self-Contained Unit
 
-A `Task` carries its own config AND exit condition. You can enqueue:
-```
-Task(type="raid", config=ConfigA, exit={"type":"raid_count","value":100})
-Task(type="quest", config=ConfigB, exit={"type":"until_finish","value":true})
-```
+A `Task` carries its own config AND exit condition. RuntimeManager treats them as opaque units — it does not know what a "raid" is.
 
-RuntimeManager treats them as opaque units. It does not know what a "raid" is.
+### No Singletons
 
-### 2. No Singletons
-
-`ConfigManager` (singleton) is deleted. Replaced by:
+`ConfigManager` (singleton) was deleted. Replaced by:
 - `GlobalConfig` — owned by RuntimeManager
 - `TaskConfig` — owned by Task
 - `TaskProgress` — owned by TaskManager
 
 This makes testing possible and removes hidden global state.
 
-### 3. Single Automation Thread
+### Single Automation Thread
 
 Selenium WebDriver is **not thread-safe**. All automation runs in one daemon thread spawned by RuntimeManager. There is NO background observer thread for state detection.
 
 State detection happens:
-- Between raids (in TaskManager.run() loop) — safe, browser is stable
+- Between raids (in `TaskManager.run()` loop) — safe, browser is stable
 - During battle via `task_progress.current_state` writes from `do_battle` — write-only, no polling
 
-### 4. Failure Policy
+### Failure Policy
 
 | Failure Type | Behavior |
 |--------------|----------|
@@ -594,13 +549,13 @@ State detection happens:
 | CAPTCHA detected | TaskManager returns `"captcha"`. RuntimeManager hard-stops, clears entire queue, notifies user. |
 | User clicks Stop | Cooperative stop at next boundary. Current task returns `"stopped"`. Queue remains for resume. |
 
-### 5. Drop Logging Hook
+### Drop Logging Hook
 
 After every successful raid cycle, TaskManager checks the URL. If on a result screen (`#result_multi/*`), it calls `DropLogger.capture(driver, raid_id, raid_name)`. This is safe because the browser is stable on the result page.
 
 This is based on `hihihori3.py`'s `log_raid_results()` which parses `.prt-item-list` and `.lis-treasure.btn-treasure-item` elements. The stub is in `domain/drop_logger.py` and will be fully implemented in a future phase.
 
-### 6. Per-Task Config Overrides
+### Per-Task Config Overrides
 
 Because each `Task` carries its own `TaskConfig`, you can queue different tasks with different settings without changing global defaults:
 ```python
@@ -610,67 +565,12 @@ runtime.enqueue_task(Task(type="raid", task_config=TaskConfig(turn=3, refresh=Fa
 
 ---
 
-## Data Flow
+## Thread Safety
 
-```
-UI (Flask)
-  │ POST /api/start  → runtime.enqueue_task(task); runtime.start()
-  │ GET  /api/config → runtime.global_config + runtime.current_task_manager.progress
-  │ SSE              → runtime.get_current_progress_snapshot()
-  ▼
-RuntimeManager
-  │ spawns thread
-  ▼
-_run_loop()
-  │ deque Task
-  ▼
-TaskManager.run()
-  │ loop:
-  │   detect_state(url) → task_progress.current_state
-  │   task_executor.execute_task_cycle(actions)
-  │   if success and on result screen → drop_logger.capture()
-  │   check_exit_condition()
-  ▼
-TaskExecutor.execute_task_cycle(actions)
-  │ FSM: action → result → transition → next action
-  │ _check_and_handle_popup(nav) between actions
-  ▼
-Actions
-  │ do_battle writes: task_progress.current_turn, task_progress.raids_completed
-  │ select_raid writes: task_progress.current_raid_name, task_progress.boss_hp_at_entry
-```
-
----
-
-## File Structure (New)
-
-```
-src/
-├── __init__.py
-├── main.py                      # Legacy standalone entry point
-├── runtime/
-│   ├── __init__.py
-│   ├── global_config.py         # GlobalConfig dataclass
-│   └── runtime_manager.py       # Top-level scheduler + queue
-├── task/
-│   ├── __init__.py
-│   ├── task.py                  # Task + TaskConfig dataclasses
-│   ├── task_progress.py         # TaskProgress dataclass
-│   ├── task_manager.py          # Task lifecycle owner
-│   └── task_executor.py         # Pure FSM runner
-├── action/
-│   ├── __init__.py
-│   ├── action_context.py        # Execution envelope
-│   ├── action_registry.py       # Decorator registry
-│   └── actions.py               # All registered actions
-├── domain/
-│   ├── __init__.py
-│   ├── state_machine.py         # State enum + detect_state(url)
-│   └── drop_logger.py           # Stub for DOM-based drop logging
-└── infra/
-    ├── __init__.py
-    └── navigator.py             # Selenium + PyAutoGUI browser automation
-```
+- `Navigator` (Selenium driver) is used by **one thread only** — the automation daemon thread
+- `TaskProgress` is mutated only by `TaskManager` in that same thread
+- Flask endpoints read `TaskProgress` fields directly; since Python dict reads are atomic and the automation thread only writes during its own loop, this is safe for UI display purposes
+- If stricter consistency is needed later, add a `threading.Lock` around `TaskProgress` writes and Flask snapshot reads
 
 ---
 
@@ -688,42 +588,6 @@ src/
 
 ---
 
-## Action Context Changes
-
-All actions changed from writing to a global singleton:
-```python
-# OLD
-context.config.raids_completed += 1
-context.config.current_turn = current_turn
-
-# NEW
-context.task_progress.raids_completed += 1
-context.task_progress.current_turn = current_turn
-```
-
-This makes it explicit which task's progress is being updated.
-
----
-
-## Flask API Changes
-
-- `ui/app.py` no longer imports `ConfigManager` or `CoreEngine`
-- It creates `RuntimeManager` and passes it to endpoints
-- `POST /api/start` builds a `Task` object and enqueues it
-- `GET /api/progress` reads from `runtime.get_current_progress_snapshot()`
-- Persistence to `config/default.json` still works via `GlobalConfig` save/load
-
----
-
-## Thread Safety
-
-- `Navigator` (Selenium driver) is used by **one thread only** — the automation daemon thread
-- `TaskProgress` is mutated only by `TaskManager` in that same thread
-- Flask endpoints read `TaskProgress` fields directly; since Python dict reads are atomic and the automation thread only writes during its own loop, this is safe for UI display purposes
-- If stricter consistency is needed later, add a `threading.Lock` around `TaskProgress` writes and Flask snapshot reads
-
----
-
 ## Benefits of This Design
 
 1. **Clear ownership**: No more "who owns `raids_completed`?" — TaskManager owns TaskProgress.
@@ -734,4 +598,3 @@ This makes it explicit which task's progress is being updated.
 6. **Extensible logging**: DropLogger is a clean hook; future analytics just plug into TaskManager.
 7. **Failure isolation**: One bad task doesn't kill the queue (unless it's captcha).
 8. **No threading hell**: Single automation thread avoids Selenium race conditions entirely.
-

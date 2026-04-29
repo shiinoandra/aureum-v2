@@ -9,7 +9,7 @@ import time
 import math
 import pyautogui
 import numpy as np
-from bezier import Curve
+from infra.bezier_compat import Curve
 
 class Navigator:
     def __init__(self,driver:WebDriver):

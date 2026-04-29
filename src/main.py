@@ -28,7 +28,7 @@ def create_browser():
     driver = uc.Chrome(
         options=chrome_options,
         user_data_dir=user_data_dir,
-        version_main=146
+        version_main=145
     )
 
     return driver
