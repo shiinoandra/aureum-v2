@@ -1,0 +1,41 @@
+{
+  "task_type": "event",
+  "task_config": {
+    "turn": 1,
+    "refresh": true,
+    "until_finish": true,
+    "trigger_skip": false,
+    "pre_fa": true,
+    "min_hp_threshold": 60,
+    "max_hp_threshold": 100,
+    "min_people": 1,
+    "max_people": 30,
+    "summon_priority": []
+  },
+  "actions": [
+    {
+      "name": "go_to_url",
+      "params": {
+        "url": "https://game.granbluefantasy.jp/#quest/supporter/942921/1"
+      }
+    },
+    {
+      "name": "select_summon",
+      "params": {}
+    },
+    {
+      "name": "join_battle",
+      "params": {}
+    },
+    {
+      "name": "do_battle",
+      "params": {
+        "mode": "full_auto"
+      }
+    }
+  ],
+  "exit_condition": {
+    "type": "raid_count",
+    "value": 10
+  }
+}

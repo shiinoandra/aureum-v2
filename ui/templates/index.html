@@ -556,8 +556,8 @@
                         <label class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100">
                             <input type="checkbox" class="battle-checkbox w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" data-index="${i}">
                             <div class="flex-1">
-                                <div class="text-sm font-semibold text-slate-900">${b.raw_text || 'Unknown'}</div>
-                                <div class="text-xs text-slate-500">Type: ${b.type} | Quest: ${b.quest_id || 'N/A'}</div>
+                                <div class="text-sm font-semibold text-slate-900">${b.chapter_name || 'Unknown'}</div>
+                                <div class="text-xs text-slate-500">Type: ${b.difficulty} | Quest id: ${b.quest_id || 'N/A'}</div>
                             </div>
                         </label>
                     `).join('');
@@ -578,14 +578,14 @@
             checkboxes.forEach(cb => {
                 const idx = parseInt(cb.dataset.index);
                 const battle = currentDiscovered[idx];
-                const filename = `${dateStr}_${prefix}_${idx}.json`;
+                const filename = `${dateStr}_${prefix}_${battle.difficulty}.json`;
 
                 // Build generic event task
                 const taskDef = {
                     task_type: "event",
                     task_config: cfg,
                     actions: [
-                        {"name": "go_to_url", "params": {"url": battle.quest_id ? `https://game.granbluefantasy.jp/#quest/supporter/${battle.quest_id}/1` : ""}},
+                        {"name": "go_to_url", "params": {"url": battle.battle_url ? battle.battle_url : ""}},
                         {"name": "select_summon", "params": {}},
                         {"name": "join_battle", "params": {}},
                         {"name": "do_battle", "params": {"mode": "full_auto"}}

@@ -8,6 +8,8 @@ import time
 import uuid
 from pathlib import Path
 from datetime import datetime
+from bs4 import BeautifulSoup
+
 
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, _project_root)
@@ -359,57 +361,49 @@ def discover_event():
         time.sleep(2)
 
         battles = []
+        event_type=""
 
-        # Strategy 1: look for event raid buttons
-        try:
-            event_btns = driver.find_elements(By.CSS_SELECTOR, ".btn-event-raid")
-            for btn in event_btns:
-                battles.append({
-                    "type": "placeholder",
-                    "raw_text": btn.text.strip(),
-                    "selector": ".btn-event-raid",
-                })
-        except:
-            pass
+        if "treasureraid" in event_url:
+            event_type="box_event"
+            scripts = driver.find_elements(By.CSS_SELECTOR, "script[id^='tpl-button-battle']")
 
-        # Strategy 2: look for quest start buttons inside event frames
-        try:
-            quest_btns = driver.find_elements(By.CSS_SELECTOR, ".prt-quest-frame .btn-quest-start")
-            for btn in quest_btns:
-                qid = btn.get_attribute("data-quest-id") or ""
-                # Try to find thumbnail image for type hint
-                img_src = ""
-                try:
-                    img = btn.find_element(By.CSS_SELECTOR, "img.img-quest-thumbnail")
-                    img_src = img.get_attribute("src") or ""
-                except:
-                    pass
+            for script in scripts:
+                html = script.get_attribute("innerHTML")
+                soup = BeautifulSoup(html, "html.parser")
+                div = soup.find("div", class_="btn-offer")
+                
+                ap_value = div.get("data-ap")
+                quest_id = div.get("data-quest-id")
+                treasure_id = div.get("data-treasure-id")
+                if div and ap_value and ap_value.isdigit():
+                    ap = int(ap_value)
 
-                battles.append({
-                    "type": "placeholder",
-                    "raw_text": btn.text.strip(),
-                    "quest_id": qid,
-                    "img_src": img_src,
-                    "selector": ".prt-quest-frame .btn-quest-start",
-                })
-        except:
-            pass
+                    difficulty_map = {
+                        20: "Very Hard",
+                        30: "Extreme",
+                        40: "Impossible",
+                    }
 
-        # Strategy 3: generic quest buttons
-        try:
-            generic_btns = driver.find_elements(By.CSS_SELECTOR, ".btn-quest-start")
-            for btn in generic_btns:
-                if btn not in [b.get("element") for b in battles]:
+                    battle_url_map = {
+                        20:f"https://game.granbluefantasy.jp/#quest/supporter/{quest_id}/1",
+                        30:f"https://game.granbluefantasy.jp/#quest/supporter/{quest_id}/1/0/{treasure_id}",
+                        40:f"https://game.granbluefantasy.jp/#quest/supporter/{quest_id}/1/0/{treasure_id}",
+
+                    }
+
                     battles.append({
-                        "type": "placeholder",
-                        "raw_text": btn.text.strip(),
-                        "quest_id": btn.get_attribute("data-quest-id") or "",
-                        "selector": ".btn-quest-start",
+                        "ap": ap,
+                        "quest_id": quest_id,
+                        "chapter_id": div.get("data-chapter-id"),
+                        "chapter_name": div.get("data-chapter-name"),
+                        "treasure_id": treasure_id,
+                        "difficulty": difficulty_map.get(ap, "Unknown"),
+                        "battle_url" : battle_url_map.get(ap,"")
                     })
-        except:
-            pass
+        
+        print(battles)
 
-        return jsonify({"status": "ok", "battles": battles, "event_url": event_url})
+        return jsonify({"status": "ok", "event_url": event_url, "event_type" :event_type, "battles": battles})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

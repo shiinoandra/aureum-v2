@@ -390,7 +390,6 @@ def action_do_battle(params, context: ActionContext):
                 ):
                     return ActionContext.RESULT_SUCCESS
 
-                # Refresh to skip attack animation / reset UI for next turn
                 nav.driver.refresh()
                 if task_config.pre_fa and fullauto_clicked == 0:
                     try:
@@ -404,6 +403,18 @@ def action_do_battle(params, context: ActionContext):
                             fullauto_clicked = 1
                     except TimeoutException:
                         pass
+                if (
+                    "#result_multi/" in nav.get_current_url()
+                    or "#result/" in nav.get_current_url()
+                ):
+                    print("[→] Battle ended - detected result URL")
+                    battle_ended = True
+
+                if battle_ended:
+                    if click_target:
+                        nav.click_element(click_target)
+                    context.battle_finished = True
+                    return ActionContext.RESULT_SUCCESS
                 try:
                     nav.wait_for_element(
                         By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
@@ -417,6 +428,7 @@ def action_do_battle(params, context: ActionContext):
 
         # refresh=true: refresh to skip skill animations
         if task_config.refresh:
+            time.sleep(random.uniform(0.1,0.3))
             print("[i] Refreshing to skip skill animations...")
             fullauto_clicked = 0
             nav.driver.refresh()
@@ -432,6 +444,18 @@ def action_do_battle(params, context: ActionContext):
                         fullauto_clicked = 1
                 except TimeoutException:
                     pass
+            if (
+                "#result_multi/" in nav.get_current_url()
+                or "#result/" in nav.get_current_url()
+            ):
+                print("[→] Battle ended - detected result URL")
+                battle_ended = True
+
+            if battle_ended:
+                if click_target:
+                    nav.click_element(click_target)
+                context.battle_finished = True
+                return ActionContext.RESULT_SUCCESS
             try:
                 nav.wait_for_element(
                     By.CSS_SELECTOR, ".btn-attack-start.display-on", timeout=5
