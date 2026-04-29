@@ -47,25 +47,27 @@ def _detect_popup_type(popup_text: str) -> str:
 
 def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
     popup = None
+
     selectors = [
         ".common-pop-error.pop-show",
         ".pop-usual.pop-result-assist-raid.pop-show",
         ".pop-usual.pop-rematch-fail.pop-show",
     ]
-
     for sel in selectors:
         try:
             popup = nav.driver.find_element(By.CSS_SELECTOR, sel)
             break
         except NoSuchElementException:
-            pass
+            return
+            #pass
 
     # Fallback: generic .pop-usual but with text filter
-    if not popup:
-        try:
-            popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop-usual.pop-show")
-        except NoSuchElementException:
-            return None
+    # if not popup:
+    #     try:
+    #         popup = nav.driver.find_element(By.CSS_SELECTOR, ".pop-usual.pop-show")
+    #     except NoSuchElementException:
+    #         return None
+
 
     # Get text
     try:
@@ -73,9 +75,14 @@ def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
     except:
         popup_text = popup.text.strip()
 
+    try:
+        popup_header_text = popup.find_element(By.CSS_SELECTOR, ".prt-popup-header").text.strip()
+    except:
+        popup_header_text = ""
+
     # Ignore victory/reward popups
-    victory_keywords = ["exp", "Prestige", "Bonus", "items were used", "battle log"]
-    if any(k in popup_text.lower() for k in victory_keywords):
+    victory_keywords = ["exp", "prestige", "bonus", "items were used", "battle log","event items","exp gained"]
+    if (any(k in popup_text.lower() for k in victory_keywords) or any(k in popup_header_text.lower() for k in victory_keywords)):
         return None
 
     print(f"[!] Popup detected")
@@ -411,8 +418,6 @@ def action_do_battle(params, context: ActionContext):
                     battle_ended = True
 
                 if battle_ended:
-                    if click_target:
-                        nav.click_element(click_target)
                     context.battle_finished = True
                     return ActionContext.RESULT_SUCCESS
                 try:
@@ -452,8 +457,6 @@ def action_do_battle(params, context: ActionContext):
                 battle_ended = True
 
             if battle_ended:
-                if click_target:
-                    nav.click_element(click_target)
                 context.battle_finished = True
                 return ActionContext.RESULT_SUCCESS
             try:

@@ -3,7 +3,7 @@
   "task_config": {
     "turn": 1,
     "refresh": false,
-    "until_finish": false,
+    "until_finish": true,
     "trigger_skip": false,
     "pre_fa": false,
     "min_hp_threshold": 60,

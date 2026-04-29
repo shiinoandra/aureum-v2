@@ -172,7 +172,7 @@ class Navigator:
         center_y = rect["y"] + rect["height"] / 2
         
         # Random offset within radius (-150 to +150 px from center)
-        radius = random.randint(80, 150)
+        radius = random.randint(30, 80)
         angle = random.uniform(0, 2 * math.pi)
         offset_x = int(radius * math.cos(angle))
         offset_y = int(radius * math.sin(angle))
