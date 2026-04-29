@@ -143,6 +143,9 @@ class Navigator:
     def click_onthespot(self):
         self.wait(0.1,0.2)
         pyautogui.leftClick()
+        if random.uniform(0.0, 1.0) > 0.5:
+            pos = pyautogui.position()
+            self._move_away_from_point(pos[0], pos[1])
         
     def _fast_move(self, end_pos: tuple):
         start_pos = pyautogui.position()
@@ -162,17 +165,9 @@ class Navigator:
         pyautogui.moveTo(end_pos[0], end_pos[1])
         time.sleep(random.uniform(0.02, 0.03))
 
-    def _move_away(self, element):
-        """Move mouse away from element after click - natural radius-based"""
-        rect = self.get_element_rect(element)
+    def _move_away_from_point(self,center_x:float,center_y:float):
         screen_w, screen_h = pyautogui.size()
-        
-        # Element center
-        center_x = rect["x"] + rect["width"] / 2
-        center_y = rect["y"] + rect["height"] / 2
-        
-        # Random offset within radius (-150 to +150 px from center)
-        radius = random.randint(80, 150)
+        radius = random.randint(30, 100)
         angle = random.uniform(0, 2 * math.pi)
         offset_x = int(radius * math.cos(angle))
         offset_y = int(radius * math.sin(angle))
@@ -186,6 +181,17 @@ class Navigator:
         new_y = max(padding, min(screen_h - padding, new_y))
         
         self._fast_move((new_x, new_y))
+
+    def _move_away(self, element):
+        """Move mouse away from element after click - natural radius-based"""
+        rect = self.get_element_rect(element)
+        
+        # Element center
+        center_x = rect["x"] + rect["width"] / 2
+        center_y = rect["y"] + rect["height"] / 2
+        self._move_away_from_point(center_x,center_y)
+        
+       
 
     def scroll_element(self,element):
         # Option 2: Mouse wheel scroll (more human-like)
