@@ -8,6 +8,9 @@ Browser automation for Granblue Fantasy, built with Python, Selenium, and Flask.
 # Install dependencies
 pip install -r requirements.txt
 
+# (Linux/Wayland only) Set up XAuthority for PyAutoGUI
+python setup_xwayland.py
+
 # Run the Flask UI (main entry point)
 python ui/app.py
 ```
@@ -30,11 +33,35 @@ Aureum automates repetitive gameplay loops in Granblue Fantasy:
 - **TaskExecutor** drives an FSM-based action pipeline defined in JSON task files
 - **Task Creator** (UI tab) allows editing battle parameters and generating event task JSONs
 - **Navigator** handles Selenium + PyAutoGUI browser interaction
+- **SQLite** stores task history and drop logs
 
 Each task JSON is **self-contained** and embeds its own `task_config` (turn, refresh, summon priority, etc.).
 There is no global `config/default.json` — task files in `tasks/` are the single source of truth.
 
 See `AGENTS.md` for full architecture documentation.
+
+## UI
+
+The control panel uses **HTMX + Jinja2 + Tailwind CSS** with **Server-Sent Events** for live updates.
+
+### Tabs
+- **Main** — Queue management, task selector, content picker (raid/event/quest), live raid card
+- **Task Creator** — Edit battle parameters, scan events, generate task JSONs
+- **History** — View past task runs with completion counts, durations, and drop logs
+
+## Key Features
+
+| Feature | Status |
+|---------|--------|
+| Queue-based task execution | ✅ |
+| Queue persistence (`data/queue.json`) | ✅ |
+| Pause / Resume | ✅ |
+| Task history logging (SQLite) | ✅ |
+| Drop logging (SQLite) | ✅ |
+| HTMX server-rendered UI | ✅ |
+| Real-time SSE progress updates | ✅ |
+| Event discovery / task generation | ✅ |
+| Local Font Awesome (no CDN dependency) | ✅ |
 
 ## Legacy Entry Point
 
@@ -45,4 +72,5 @@ See `AGENTS.md` for full architecture documentation.
 - Python 3
 - Flask (web UI)
 - Selenium + undetected-chromedriver (browser automation)
-- PyAutoGUI + bezier (human-like mouse movement)
+- PyAutoGUI + pure-Python bezier (human-like mouse movement)
+- SQLite (task history, drop logs, knowledge base)

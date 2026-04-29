@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% set active_tab = 'history' %}
+
+{% block content %}
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-slate-700">Task History</h3>
+        <span class="text-xs text-slate-400">Recent tasks</span>
+    </div>
+    <div id="history-table" hx-get="/htmx/history-table?page=1" hx-trigger="load" hx-swap="innerHTML">
+        <div class="flex justify-center py-8">
+            <i class="fa-solid fa-circle-notch fa-spin text-slate-400 text-xl"></i>
+        </div>
+    </div>
+</div>
+{% endblock %}

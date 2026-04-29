@@ -1,0 +1,18 @@
+{% if task_config %}
+<div id="taskPreview" class="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Task Preview</h4>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div><span class="text-slate-500">Type:</span> <span class="font-medium text-slate-900">{{ task_type }}</span></div>
+        <div><span class="text-slate-500">Turns:</span> <span class="font-medium text-slate-900">{{ task_config.turn }}</span></div>
+        <div><span class="text-slate-500">Refresh:</span> <span class="font-medium text-slate-900">{{ 'ON' if task_config.refresh else 'OFF' }}</span></div>
+        <div><span class="text-slate-500">Until Finish:</span> <span class="font-medium text-slate-900">{{ 'ON' if task_config.until_finish else 'OFF' }}</span></div>
+        <div><span class="text-slate-500">Trigger Skip:</span> <span class="font-medium text-slate-900">{{ 'ON' if task_config.trigger_skip else 'OFF' }}</span></div>
+        <div><span class="text-slate-500">Pre-FA:</span> <span class="font-medium text-slate-900">{{ 'ON' if task_config.pre_fa else 'OFF' }}</span></div>
+        <div><span class="text-slate-500">HP Range:</span> <span class="font-medium text-slate-900">{{ task_config.min_hp_threshold }}-{{ task_config.max_hp_threshold }}%</span></div>
+        <div><span class="text-slate-500">Players:</span> <span class="font-medium text-slate-900">{{ task_config.min_people }}-{{ task_config.max_people }}</span></div>
+    </div>
+    <div class="mt-2"><span class="text-slate-500 text-sm">Summons:</span> <span class="text-sm font-medium text-slate-900">{{ summons_text or 'None' }}</span></div>
+</div>
+{% else %}
+<div id="taskPreview" class="hidden"></div>
+{% endif %}

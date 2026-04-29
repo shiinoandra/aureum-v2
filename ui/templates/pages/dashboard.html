@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% set active_tab = 'main' %}
+
+{% block content %}
+<!-- Status Header -->
+<div id="status-header" hx-get="/htmx/status" hx-trigger="load, every 1s"></div>
+
+<!-- Queue Panel -->
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Task Queue</h3>
+    <div id="queue-panel" hx-get="/htmx/queue" hx-trigger="load, queueUpdated from:body"></div>
+</div>
+
+<!-- Task Selector with Tabs -->
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <!-- Tabs -->
+    <div class="flex items-center gap-1 mb-4 border-b border-slate-200">
+        <button onclick="switchTaskTab('manual')" id="tab-manual" class="task-tab-btn px-4 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600">
+            Manual Select
+        </button>
+        <button onclick="switchTaskTab('content')" id="tab-content" class="task-tab-btn px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700">
+            Pick Content
+        </button>
+    </div>
+
+    <!-- Manual Tab -->
+    <div id="task-content-manual" class="task-content">
+        <div class="flex flex-col md:flex-row gap-4 items-end">
+            <div class="flex-1">
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Select Task</label>
+                <select id="taskSelector" name="task_name"
+                        class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        hx-get="/htmx/task-preview"
+                        hx-target="#taskPreview"
+                        hx-swap="outerHTML"
+                        hx-trigger="change">
+                    <option value="">-- Select a task --</option>
+                    {% for task_file in task_files %}
+                    <option value="{{ task_file }}">{{ task_file }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="w-32">
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Amount</label>
+                <input type="number" id="taskAmount" name="amount" value="10" min="1"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            <button hx-post="/api/enqueue"
+                    hx-include="#taskSelector, #taskAmount"
+                    hx-target="#enqueue-result"
+                    hx-swap="innerHTML"
+                    class="h-12 px-6 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                <i class="fa-solid fa-plus"></i>
+                Add
+            </button>
+        </div>
+        <div id="enqueue-result" class="mt-2 text-sm"></div>
+        <div id="taskPreview" class="hidden"></div>
+    </div>
+
+    <!-- Pick Content Tab -->
+    <div id="task-content-content" class="task-content hidden">
+        <p class="text-sm text-slate-500 mb-4 text-center">Select content type to browse available tasks</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+            <!-- Raid Button -->
+            <button onclick="openContentModal('raid')"
+                    class="group flex flex-col items-center gap-3 p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all">
+                <div class="w-14 h-14 rounded-full bg-blue-50 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-bolt text-2xl text-blue-600"></i>
+                </div>
+                <div class="text-center">
+                    <span class="text-sm font-semibold text-slate-900 block">Raid</span>
+                    <span class="text-xs text-slate-500">Browse raid grid</span>
+                </div>
+            </button>
+
+            <!-- Event Button -->
+            <button onclick="openContentModal('event')"
+                    class="group flex flex-col items-center gap-3 p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-amber-400 hover:shadow-lg transition-all">
+                <div class="w-14 h-14 rounded-full bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-flag text-2xl text-amber-600"></i>
+                </div>
+                <div class="text-center">
+                    <span class="text-sm font-semibold text-slate-900 block">Event</span>
+                    <span class="text-xs text-slate-500">Browse event list</span>
+                </div>
+            </button>
+
+            <!-- Quest Button -->
+            <button onclick="openContentModal('quest')"
+                    class="group flex flex-col items-center gap-3 p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-emerald-400 hover:shadow-lg transition-all">
+                <div class="w-14 h-14 rounded-full bg-emerald-50 group-hover:bg-emerald-100 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-scroll text-2xl text-emerald-600"></i>
+                </div>
+                <div class="text-center">
+                    <span class="text-sm font-semibold text-slate-900 block">Quest</span>
+                    <span class="text-xs text-slate-500">Browse quest list</span>
+                </div>
+            </button>
+        </div>
+        <div id="content-picker-result" class="mt-4"></div>
+    </div>
+</div>
+
+<!-- Current Raid Card -->
+<div id="raid-card" class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden"
+     hx-get="/htmx/raid-card" hx-trigger="load, every 2s"></div>
+
+<!-- Content Picker Modal -->
+<div id="contentModal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" onclick="closeContentModal()"></div>
+    <div class="fixed inset-0 z-10 overflow-y-auto">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="relative transform overflow-hidden rounded-xl bg-white shadow-2xl transition-all w-full max-w-3xl">
+                <!-- Modal Header -->
+                <div class="bg-slate-800 px-6 py-4 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-white" id="content-modal-title">Select Content</h3>
+                    <button onclick="closeContentModal()" class="text-slate-400 hover:text-white transition-colors">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Content Area -->
+                <div class="p-6 bg-slate-50 max-h-[65vh] overflow-y-auto">
+                    <div id="content-list-area" hx-get="/htmx/content-list/raid" hx-trigger="load"></div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-white px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                    <button onclick="closeContentModal()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Task tab switching
+function switchTaskTab(tab) {
+    document.querySelectorAll('.task-tab-btn').forEach(btn => {
+        btn.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+        btn.classList.add('text-slate-500');
+    });
+    document.querySelectorAll('.task-content').forEach(content => content.classList.add('hidden'));
+
+    const activeBtn = document.getElementById('tab-' + tab);
+    activeBtn.classList.remove('text-slate-500');
+    activeBtn.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+    document.getElementById('task-content-' + tab).classList.remove('hidden');
+}
+
+// Content Modal
+let currentContentType = '';
+
+function openContentModal(type) {
+    currentContentType = type;
+    const modal = document.getElementById('contentModal');
+    const title = document.getElementById('content-modal-title');
+
+    const titles = {
+        'raid': 'Select Raid',
+        'event': 'Select Event',
+        'quest': 'Select Quest'
+    };
+    title.textContent = titles[type] || 'Select Content';
+
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    // Load appropriate content
+    const listArea = document.getElementById('content-list-area');
+    listArea.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>';
+
+    if (type === 'raid') {
+        htmx.ajax('GET', '/htmx/raid-grid/standard', { target: '#content-list-area' });
+    } else {
+        htmx.ajax('GET', '/htmx/content-list/' + type, { target: '#content-list-area' });
+    }
+}
+
+function closeContentModal() {
+    document.getElementById('contentModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+// For raid grid inside modal, use same selectRaid function from raid_grid.html
+function selectContent(id, name, type) {
+    closeContentModal();
+    const result = document.getElementById('content-picker-result');
+    result.innerHTML = `
+        <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-blue-600 font-semibold uppercase">Selected ${type.charAt(0).toUpperCase() + type.slice(1)}</p>
+                    <p class="text-lg font-bold text-slate-900">${name}</p>
+                    <p class="text-xs text-slate-500">ID: ${id}</p>
+                </div>
+                <button onclick="addContentToQueue('${id}', '${type}')" class="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors">
+                    Add to Queue
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function addContentToQueue(id, type) {
+    alert(`${type.charAt(0).toUpperCase() + type.slice(1)} ${id} selected. Task creation from content picker will be fully implemented with P6.`);
+}
+
+function loadContentPage(type, page) {
+    const listArea = document.getElementById('content-list-area');
+    listArea.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>';
+    htmx.ajax('GET', '/htmx/content-list/' + type + '?page=' + page, { target: '#content-list-area' });
+}
+
+function switchRaidCategory(category) {
+    document.querySelectorAll('[id^="raid-tab-"]').forEach(btn => {
+        btn.classList.remove('bg-blue-600');
+        btn.classList.add('bg-slate-700', 'hover:bg-slate-600');
+    });
+    document.getElementById('raid-tab-' + category).classList.remove('bg-slate-700', 'hover:bg-slate-600');
+    document.getElementById('raid-tab-' + category).classList.add('bg-blue-600');
+
+    const grid = document.getElementById('content-list-area');
+    grid.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>';
+    htmx.ajax('GET', '/htmx/raid-grid/' + category, { target: '#content-list-area' });
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeContentModal();
+});
+</script>
+{% endblock %}

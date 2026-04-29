@@ -8,6 +8,7 @@ from task.task_progress import TaskProgress
 from task.task_executor import TaskExecutor, CaptchaDetectedException, StopRequestedException
 from runtime.global_config import GlobalConfig
 from action.action_context import ActionContext
+import infra.database as db
 
 
 class TaskManager:
@@ -19,6 +20,7 @@ class TaskManager:
     - Detect state between cycles
     - Call DropLogger on result screens
     - Handle retry/backoff for transient failures
+    - Write task execution history to SQLite
     """
 
     def __init__(self, task: Task, navigator, global_config: GlobalConfig):
@@ -33,6 +35,7 @@ class TaskManager:
         self._stop_requested = False
         self._network_retries = 0
         self._max_retries = 3
+        self.history_id: Optional[int] = None
 
     def run(self) -> str:
         """
@@ -48,59 +51,102 @@ class TaskManager:
         self.progress.status = "running"
         print(f"[*] TaskManager started for {self.task.task_type} ({self.task.task_id})")
 
-        while not self._stop_requested:
-            try:
-                # State detection between raids (non-blocking, just for UI/tracking)
-                url = self.navigator.get_current_url()
-                current_state = detect_state(url)
-                self.progress.current_state = current_state.value
+        target = (
+            self.task.exit_condition.get("value")
+            if self.task.exit_condition
+            else None
+        )
+        try:
+            self.history_id = db.insert_task_history(
+                task_name=self.task.source_file or self.task.task_id,
+                task_type=self.task.task_type,
+                target_count=target,
+            )
+        except Exception as e:
+            print(f"[!] Failed to insert task history: {e}")
+            self.history_id = None
 
-                # Reset transient per-raid state
-                self.executor.context.reset_per_raid()
-                self.progress.current_turn = 0
+        try:
+            while not self._stop_requested:
+                try:
+                    # State detection between raids (non-blocking, just for UI/tracking)
+                    url = self.navigator.get_current_url()
+                    current_state = detect_state(url)
+                    self.progress.current_state = current_state.value
 
-                # Execute ONE raid/quest cycle
-                result = self.executor.execute_task_cycle(self.task.actions)
+                    # Reset transient per-raid state
+                    self.executor.context.reset_per_raid()
+                    self.progress.current_turn = 0
 
-                # Post-cycle hook: if success and on result screen, log drops
-                if result == ActionContext.RESULT_SUCCESS:
-                    self._handle_post_cycle()
+                    # Execute ONE raid/quest cycle
+                    result = self.executor.execute_task_cycle(self.task.actions)
 
-                # Check exit condition
-                if self._check_exit_condition():
-                    self.progress.status = "completed"
-                    print(f"[*] Task {self.task.task_id} completed")
-                    return "completed"
+                    # Post-cycle hook: if success and on result screen, log drops
+                    if result == ActionContext.RESULT_SUCCESS:
+                        self._handle_post_cycle()
+                        if self.history_id:
+                            try:
+                                db.update_task_history(
+                                    self.history_id,
+                                    completed_count=self.progress.raids_completed,
+                                )
+                            except Exception as e:
+                                print(f"[!] Failed to update task history: {e}")
 
-            except CaptchaDetectedException:
-                self.progress.status = "failed"
-                print(f"[!!!] Task {self.task.task_id} hit captcha")
-                return "captcha"
-            except StopRequestedException:
-                self.progress.status = "stopped"
-                print(f"[*] Task {self.task.task_id} stopped by user")
-                return "stopped"
-            except Exception as e:
-                print(f"[!] Exception in task {self.task.task_id}: {e}")
-                import traceback
-                traceback.print_exc()
-                # For now treat all exceptions as failed (skip to next task)
-                self.progress.status = "failed"
-                return "failed"
+                    # Check exit condition
+                    if self._check_exit_condition():
+                        self.progress.status = "completed"
+                        print(f"[*] Task {self.task.task_id} completed")
+                        return "completed"
 
-        self.progress.status = "stopped"
-        return "stopped"
+                except CaptchaDetectedException:
+                    self.progress.status = "failed"
+                    print(f"[!!!] Task {self.task.task_id} hit captcha")
+                    return "captcha"
+                except StopRequestedException:
+                    self.progress.status = "stopped"
+                    print(f"[*] Task {self.task.task_id} stopped by user")
+                    return "stopped"
+                except Exception as e:
+                    print(f"[!] Exception in task {self.task.task_id}: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+                    self.progress.status = "failed"
+                    return "failed"
+
+            self.progress.status = "stopped"
+            return "stopped"
+        finally:
+            if self.history_id:
+                try:
+                    db.update_task_history(
+                        self.history_id,
+                        completed_count=self.progress.raids_completed,
+                        status=self.progress.status,
+                    )
+                except Exception as e:
+                    print(f"[!] Failed to finalize task history: {e}")
 
     def _handle_post_cycle(self):
         """Called after every successful cycle. Safe to inspect DOM."""
         url = self.navigator.get_current_url()
         state = detect_state(url)
         if state in (State.RAID_RESULT, State.QUEST_RESULT):
-            self.logger.capture(
+            items_json = self.logger.capture(
                 driver=self.navigator.driver,
                 raid_id=self.progress.current_raid_id,
                 raid_name=self.progress.current_raid_name,
             )
+            if self.history_id and items_json and items_json != "[]":
+                try:
+                    db.insert_drop_log(
+                        task_history_id=self.history_id,
+                        items_json=items_json,
+                        raid_id=self.progress.current_raid_id or None,
+                    )
+                except Exception as e:
+                    print(f"[!] Failed to insert drop log: {e}")
         # Increment raids_completed after the cycle
         self.progress.raids_completed += 1
 
@@ -128,7 +174,11 @@ class TaskManager:
             "is_running": self.progress.status == "running",
             "current_state": self.progress.current_state,
             "raids_completed": self.progress.raids_completed,
-            "raids_target": self.task.exit_condition.get("value", 0) if self.task.exit_condition else 0,
+            "raids_target": (
+                self.task.exit_condition.get("value", 0)
+                if self.task.exit_condition
+                else 0
+            ),
             "current_turn": self.progress.current_turn,
             "turn_target": self.task.task_config.turn,
             "current_raid_name": self.progress.current_raid_name,

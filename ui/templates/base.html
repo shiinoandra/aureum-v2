@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Aureum Control Panel{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .circular-progress { transform: rotate(-90deg); transform-origin: 50% 50%; }
+        .htmx-indicator { display: none; }
+        .htmx-request .htmx-indicator { display: inline; }
+        .htmx-request.htmx-indicator { display: inline; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-6">
+    <div class="max-w-6xl mx-auto space-y-4">
+        <!-- Navigation Tabs -->
+        <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
+            <div class="flex items-center gap-1 overflow-x-auto">
+                {% set nav_items = [
+                    ('/', 'main', 'Main', 'fa-solid fa-play'),
+                    ('/creator', 'creator', 'Task Creator', 'fa-solid fa-sliders'),
+                    ('/history', 'history', 'History', 'fa-solid fa-clock-rotate-left')
+                ] %}
+                {% for href, id, label, icon_class in nav_items %}
+                <a href="{{ href }}"
+                   class="tab-btn px-4 py-2.5 text-sm font-medium flex items-center gap-2 whitespace-nowrap transition-colors
+                   {% if active_tab == id %}text-blue-600 border-b-2 border-blue-600{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+                    <i class="{{ icon_class }} text-xs"></i>
+                    {{ label }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- SSE Adapter -->
+    <script>
+    (function() {
+        let evtSource = null;
+        let reconnectTimer = null;
+
+        function connectSSE() {
+            if (evtSource) evtSource.close();
+
+            evtSource = new EventSource('/api/events');
+
+            evtSource.onmessage = function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    updateElements(data);
+                } catch (err) {
+                    console.error('SSE parse error:', err);
+                }
+            };
+
+            evtSource.onerror = function() {
+                console.log('SSE error, will reconnect...');
+                evtSource.close();
+                if (reconnectTimer) clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(connectSSE, 2000);
+            };
+        }
+
+        function updateElements(data) {
+            // Update status header if it exists (triggers HTMX refresh)
+            const statusHeader = document.getElementById('status-header');
+            if (statusHeader && data.is_running !== undefined) {
+                // The status header is already polling via HTMX, but we can force a refresh
+                htmx.trigger(statusHeader, 'load');
+            }
+
+            // Update raid card
+            const raidCard = document.getElementById('raid-card');
+            if (raidCard && data.current_raid_name !== undefined) {
+                htmx.trigger(raidCard, 'load');
+            }
+
+            // Update queue
+            const queuePanel = document.getElementById('queue-panel');
+            if (queuePanel && data.queue !== undefined) {
+                htmx.trigger(queuePanel, 'load');
+            }
+
+            // Dispatch custom event for any other listeners
+            document.body.dispatchEvent(new CustomEvent('sse-update', { detail: data }));
+        }
+
+        // Start connection
+        connectSSE();
+
+        // Reconnect on page visibility change
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && (!evtSource || evtSource.readyState === EventSource.CLOSED)) {
+                connectSSE();
+            }
+        });
+    })();
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

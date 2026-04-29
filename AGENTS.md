@@ -37,7 +37,7 @@ RuntimeManager              ← 1 per app lifecycle. Owns queue, global config, 
             ├── TaskProgress         ← Mutable state: raids_completed, current_turn, status
             ├── TaskExecutor         ← Pure FSM runner. Decides: action transitions.
             │   └── ActionContext    ← Transient envelope per task. Holds refs only.
-            └── DropLogger (stub)    ← Post-raid DOM parsing (future)
+            └── DropLogger           ← Post-raid DOM parsing + SQLite drop_log writes
 ```
 
 ## Entry Point
@@ -435,21 +435,36 @@ HTTP endpoints for UI↔core communication:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Main control panel |
+| `/` | GET | Main control panel (HTMX dashboard) |
+| `/creator` | GET | Task creator page |
+| `/history` | GET | Task history page |
 | `/api/status` | GET | Engine ready state + any init error |
 | `/api/list_tasks` | GET | Return all `.json` filenames in `tasks/` |
 | `/api/task/<name>` | GET | Load a specific task JSON by name |
 | `/api/enqueue` | POST | Add `{task_name, amount}` to runtime queue |
 | `/api/queue` | GET | Return current queue state |
+| `/api/sync_queue` | POST | Replace entire queue with client state |
 | `/api/remove_from_queue` | POST | Remove task at index from queue |
-| `/api/reorder_queue` | POST | Reorder queue items |
+| `/api/reorder_queue` | POST | Reorder queue items (up/down arrows) |
 | `/api/clear_queue` | POST | Clear entire queue |
 | `/api/start` | POST | Start runtime if queue non-empty |
-| `/api/stop` | POST | Stop runtime + clear queue |
+| `/api/stop` | POST | Stop runtime (queue preserved) |
+| `/api/pause` | POST | Pause runtime at next boundary |
+| `/api/resume` | POST | Resume from paused state |
 | `/api/progress` | GET | Running status + progress + queue |
 | `/api/events` | GET | **SSE stream** for live progress updates |
+| `/api/history` | GET | Paginated task history JSON |
+| `/api/history/<id>/drops` | GET | Drop logs for a task history entry |
 | `/api/discover_event` | POST | Scan event URL, return discovered battles |
 | `/api/save_task` | POST | Write task JSON to `tasks/` directory |
+| `/htmx/status` | GET | Status header partial |
+| `/htmx/queue` | GET | Queue panel partial |
+| `/htmx/task-preview` | GET | Task preview partial |
+| `/htmx/raid-card` | GET | Current raid card partial |
+| `/htmx/creator-load` | GET | Creator form partial |
+| `/htmx/raid-grid/<category>` | GET | Raid grid partial |
+| `/htmx/content-list/<type>` | GET | Paginated event/quest list partial |
+| `/htmx/history-table` | GET | History table partial |
 
 ### Real-Time Updates (SSE)
 A background thread (`_progress_monitor`) pushes `TaskProgress` snapshots + queue state to all connected SSE clients every 500ms. The frontend auto-reconnects on disconnect.
@@ -468,20 +483,26 @@ A background thread (`_progress_monitor`) pushes `TaskProgress` snapshots + queu
 /home/shiinoandra/new_aureum/
 ├── AGENTS.md              # This file
 ├── docs/
+│   ├── ROADMAP.md         # Feature roadmap (P0-P9)
 │   └── PARAMETERS.md      # Battle parameter documentation
 ├── hihihori3.py           # Original reference script
 ├── requirements.txt       # Python dependencies
+├── setup_xwayland.py      # One-time XAuthority setup for Wayland
 ├── tasks/                 # Self-contained task JSONs (single source of truth)
 │   ├── raid.json          # Raid task definition
 │   ├── quest.json         # Quest task definition
 │   └── *.json             # Generated event tasks
+├── data/                  # Runtime data (gitignored)
+│   ├── aureum.db          # SQLite database
+│   └── queue.json         # Persistent queue state
 ├── src/
 │   ├── __init__.py
 │   ├── main.py            # Legacy standalone entry point
 │   ├── runtime/
 │   │   ├── __init__.py
 │   │   ├── global_config.py
-│   │   └── runtime_manager.py
+│   │   ├── runtime_manager.py
+│   │   └── queue_persistence.py
 │   ├── task/
 │   │   ├── __init__.py
 │   │   ├── task.py
@@ -499,11 +520,34 @@ A background thread (`_progress_monitor`) pushes `TaskProgress` snapshots + queu
 │   │   └── drop_logger.py
 │   └── infra/
 │       ├── __init__.py
-│       └── navigator.py
+│       ├── navigator.py
+│       ├── bezier_compat.py
+│       └── database.py
 └── ui/
     ├── app.py             # Flask web interface (main entry point)
+    ├── static/
+    │   ├── css/
+    │   │   └── all.min.css        # Local Font Awesome CSS
+    │   └── webfonts/
+    │       ├── fa-solid-900.woff2
+    │       ├── fa-regular-400.woff2
+    │       └── fa-brands-400.woff2
     └── templates/
-        └── index.html
+        ├── base.html              # Jinja base layout (HTMX + Tailwind + SSE)
+        ├── index.html             # Legacy vanilla JS page (backup)
+        ├── pages/
+        │   ├── dashboard.html     # Main control panel
+        │   ├── task_creator.html  # Task creator + event generator
+        │   └── history.html       # Task history table
+        └── partials/
+            ├── status_header.html
+            ├── queue.html
+            ├── task_preview.html
+            ├── raid_card.html
+            ├── creator_form.html
+            ├── raid_grid.html
+            ├── content_list.html
+            └── history_table.html
 ```
 
 ## Original Script Reference (hihihori3.py)
@@ -551,9 +595,9 @@ State detection happens:
 
 ### Drop Logging Hook
 
-After every successful raid cycle, TaskManager checks the URL. If on a result screen (`#result_multi/*`), it calls `DropLogger.capture(driver, raid_id, raid_name)`. This is safe because the browser is stable on the result page.
+After every successful raid cycle, TaskManager checks the URL. If on a result screen (`#result_multi/*` or `#result/*`), it calls `DropLogger.capture(driver, raid_id, raid_name)`. This parses `.prt-item-list` and `.lis-treasure.btn-treasure-item` elements to extract item names, counts, and image URLs, then writes to the SQLite `drop_log` table linked to the current `task_history` row.
 
-This is based on `hihihori3.py`'s `log_raid_results()` which parses `.prt-item-list` and `.lis-treasure.btn-treasure-item` elements. The stub is in `domain/drop_logger.py` and will be fully implemented in a future phase.
+This is based on `hihihori3.py`'s `log_raid_results()`. DB errors during logging are caught and logged; automation continues unaffected.
 
 ### Per-Task Config Overrides
 

@@ -1,0 +1,99 @@
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
+    <h3 class="text-sm font-semibold text-slate-700 mb-4">Battle Parameters</h3>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Turns</label>
+            <input type="number" name="turn" value="{{ cfg.turn | default(1) }}" min="1" max="100"
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+            <div>
+                <span class="text-sm font-semibold text-slate-900 block">Refresh</span>
+                <p class="text-xs text-slate-500">Reload state between turns</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="refresh" class="sr-only peer" {% if cfg.refresh %}checked{% endif %}>
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+            <div>
+                <span class="text-sm font-semibold text-slate-900 block">Until finish</span>
+                <p class="text-xs text-slate-500">Stay until boss dies</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="until_finish" class="sr-only peer" {% if cfg.until_finish %}checked{% endif %}>
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+            <div>
+                <span class="text-sm font-semibold text-slate-900 block">Trigger skip</span>
+                <p class="text-xs text-slate-500">Skip entrance animation</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="trigger_skip" class="sr-only peer" {% if cfg.trigger_skip %}checked{% endif %}>
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+            <div>
+                <span class="text-sm font-semibold text-slate-900 block">Pre-emptive auto</span>
+                <p class="text-xs text-slate-500">Click before battle</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="pre_fa" class="sr-only peer" {% if cfg.pre_fa %}checked{% endif %}>
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">HP Min %</label>
+            <input type="number" name="min_hp_threshold" value="{{ cfg.min_hp_threshold | default(60) }}" min="0" max="100"
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">HP Max %</label>
+            <input type="number" name="max_hp_threshold" value="{{ cfg.max_hp_threshold | default(100) }}" min="0" max="100"
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Min Players</label>
+            <input type="number" name="min_people" value="{{ cfg.min_people | default(1) }}" min="1" max="30"
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Max Players</label>
+            <input type="number" name="max_people" value="{{ cfg.max_people | default(30) }}" min="1" max="30"
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Summon Priority</label>
+            <input type="text" name="summons" value="" disabled
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   placeholder="Summon editing coming soon">
+            <p class="text-xs text-slate-400 mt-1">Summon editing will be added in a future update.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Save Task -->
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 mt-4">
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Save Task</h3>
+    <div class="flex gap-3 items-end">
+        <div class="flex-1">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Filename</label>
+            <input type="text" name="filename" value="{{ task_name }}"
+                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <button hx-post="/api/save_task"
+                hx-include="closest div"
+                class="h-12 px-5 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg shadow-sm transition-colors">Save JSON</button>
+    </div>
+</div>

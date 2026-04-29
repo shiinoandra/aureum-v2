@@ -1,0 +1,26 @@
+# Runtime data
+data/
+
+# Session artifacts
+session-ses_*.md
+last discussion.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

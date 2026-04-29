@@ -1,0 +1,74 @@
+{% if runtime %}
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <div class="flex flex-col md:flex-row md:items-center gap-4">
+        <div class="flex-1">
+            <div class="flex items-center gap-3 mb-2">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                    {% if is_running %}bg-green-50 text-green-800{% elif is_paused %}bg-amber-50 text-amber-800{% else %}bg-slate-100 text-slate-800{% endif %}">
+                    <span class="w-1.5 h-1.5 rounded-full mr-1.5
+                        {% if is_running %}bg-green-500{% elif is_paused %}bg-amber-500{% else %}bg-slate-400{% endif %}"></span>
+                    {% if is_running %}Running{% elif is_paused %}Paused{% else %}Idle{% endif %}
+                </span>
+            </div>
+            <h2 class="text-lg font-semibold text-slate-900">
+                {% if is_running %}Running - {{ current_state }}{% elif is_paused %}Paused - {{ current_state }}{% else %}Ready to start{% endif %}
+            </h2>
+        </div>
+        <div class="flex items-center gap-3 md:flex-shrink-0">
+            {% if not is_running and not is_paused %}
+            {% set queue_empty = (queue_length | default(0)) == 0 %}
+            <button hx-post="/api/start" hx-swap="none"
+                    {% if queue_empty %}disabled title="Queue is empty. Add tasks before starting."{% endif %}
+                    onclick="{% if queue_empty %}alert('Queue is empty. Please add tasks before starting.'); return false;{% endif %}"
+                    class="h-12 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <i class="fa-solid fa-play"></i>
+                Start
+            </button>
+            {% endif %}
+            {% if is_running %}
+            <button hx-post="/api/pause" hx-swap="none"
+                    class="h-12 px-6 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                <i class="fa-solid fa-pause"></i>
+                Pause
+            </button>
+            <button hx-post="/api/stop" hx-swap="none"
+                    class="h-12 px-6 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                <i class="fa-solid fa-stop"></i>
+                Stop
+            </button>
+            {% endif %}
+            {% if is_paused %}
+            <button hx-post="/api/resume" hx-swap="none"
+                    class="h-12 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                <i class="fa-solid fa-play"></i>
+                Resume
+            </button>
+            <button hx-post="/api/stop" hx-swap="none"
+                    class="h-12 px-6 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                <i class="fa-solid fa-stop"></i>
+                Stop
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="mt-4">
+        <div class="flex items-center gap-3">
+            <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: {{ progress_pct }}%"></div>
+            </div>
+            <span class="text-sm font-semibold text-slate-900 w-12 text-right">{{ progress_pct }}%</span>
+        </div>
+        <p class="text-sm text-slate-600 mt-1">{{ raids_completed }} / {{ raids_target }} raid finished</p>
+    </div>
+</div>
+{% else %}
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <div class="flex items-center gap-3">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+            Initializing...
+        </span>
+        <p class="text-sm text-slate-500">Engine is starting up...</p>
+    </div>
+</div>
+{% endif %}

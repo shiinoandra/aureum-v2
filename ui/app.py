@@ -29,6 +29,29 @@ engine_error = None
 announcer = None
 
 
+@app.template_filter("duration")
+def _duration_filter(start, end):
+    """Calculate human-readable duration between two ISO timestamps."""
+    if not start or not end:
+        return "-"
+    try:
+        fmt = "%Y-%m-%d %H:%M:%S"
+        # Strip fractional seconds if present
+        s_str = str(start).split(".")[0]
+        e_str = str(end).split(".")[0]
+        s = datetime.strptime(s_str, fmt)
+        e = datetime.strptime(e_str, fmt)
+        total_seconds = int((e - s).total_seconds())
+        if total_seconds < 60:
+            return f"{total_seconds}s"
+        elif total_seconds < 3600:
+            return f"{total_seconds // 60}m {total_seconds % 60}s"
+        else:
+            return f"{total_seconds // 3600}h {(total_seconds % 3600) // 60}m"
+    except Exception:
+        return "-"
+
+
 class MessageAnnouncer:
     def __init__(self):
         self.listeners = []
@@ -79,7 +102,8 @@ def init_engine():
         driver = create_browser()
         driver.get("https://game.granbluefantasy.jp/")
         navigator = Navigator(driver)
-        runtime = RuntimeManager(navigator)
+        tasks_dir = _get_tasks_dir()
+        runtime = RuntimeManager(navigator, tasks_dir=tasks_dir)
         threading.Thread(target=_progress_monitor, daemon=True).start()
         engine_ready = True
         print("[*] Engine initialized and ready")
@@ -98,6 +122,7 @@ def _progress_monitor():
             queue_snapshot = _get_queue_snapshot()
             payload = {
                 "is_running": snapshot["is_running"],
+                "is_paused": snapshot.get("is_paused", False),
                 "current_state": snapshot["current_state"],
                 "raids_completed": snapshot["raids_completed"],
                 "raids_target": snapshot["raids_target"],
@@ -122,7 +147,10 @@ def _get_queue_snapshot():
             "index": idx,
             "task_type": task.task_type,
             "task_id": task.task_id,
+            "source_file": task.source_file,
             "amount": exit_val,
+            "completed": task.completed,
+            "not_found_count": task.not_found_count,
         })
     return result
 
@@ -135,9 +163,237 @@ def _get_tasks_dir():
 # Page Routes
 # =============================================================================
 
+def _get_task_files():
+    """Get sorted list of task JSON files."""
+    tasks_dir = _get_tasks_dir()
+    if not tasks_dir.exists():
+        return []
+    return sorted([f.name for f in tasks_dir.glob("*.json")])
+
+
+# =============================================================================
+# Page Routes (HTMX)
+# =============================================================================
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("pages/dashboard.html", task_files=_get_task_files())
+
+
+@app.route("/creator")
+def creator_page():
+    return render_template("pages/task_creator.html", task_files=_get_task_files())
+
+
+@app.route("/history")
+def history_page():
+    return render_template("pages/history.html")
+
+
+# =============================================================================
+# HTMX Partials
+# =============================================================================
+
+@app.route("/htmx/status")
+def htmx_status():
+    """Return status header partial."""
+    if not runtime:
+        return render_template("partials/status_header.html", runtime=False)
+    snapshot = runtime.get_current_progress_snapshot()
+    queue_items = _get_queue_snapshot()
+    raids_target = snapshot.get("raids_target", 0)
+    raids_completed = snapshot.get("raids_completed", 0)
+    progress_pct = round((raids_completed / raids_target) * 100) if raids_target > 0 else 0
+    return render_template(
+        "partials/status_header.html",
+        runtime=True,
+        is_running=snapshot.get("is_running", False),
+        is_paused=snapshot.get("is_paused", False),
+        current_state=snapshot.get("current_state", "idle"),
+        raids_completed=raids_completed,
+        raids_target=raids_target,
+        progress_pct=progress_pct,
+        queue_length=len(queue_items),
+    )
+
+
+@app.route("/htmx/queue")
+def htmx_queue():
+    """Return queue partial."""
+    if not runtime:
+        return render_template("partials/queue.html", queue_items=[], is_running=False)
+    queue_items = _get_queue_snapshot()
+    snapshot = runtime.get_current_progress_snapshot()
+    return render_template(
+        "partials/queue.html",
+        queue_items=queue_items,
+        is_running=snapshot.get("is_running", False),
+    )
+
+
+@app.route("/htmx/task-preview")
+def htmx_task_preview():
+    """Return task preview partial."""
+    task_name = request.args.get("task_name", "")
+    if not task_name:
+        return render_template("partials/task_preview.html")
+    tasks_dir = _get_tasks_dir()
+    task_path = tasks_dir / task_name
+    if not task_path.exists():
+        return render_template("partials/task_preview.html")
+    with open(task_path) as f:
+        data = json.load(f)
+    cfg = data.get("task_config", {})
+    summons = cfg.get("summon_priority", [])
+    summons_text = ", ".join([s.get("name", "") + (" " + s.get("level", "") if s.get("level") else "") for s in summons]) if summons else "None"
+    return render_template(
+        "partials/task_preview.html",
+        task_type=data.get("task_type", "raid"),
+        task_config=cfg,
+        summons_text=summons_text,
+    )
+
+
+@app.route("/htmx/raid-card")
+def htmx_raid_card():
+    """Return raid card partial."""
+    if not runtime:
+        return render_template(
+            "partials/raid_card.html",
+            is_running=False,
+            current_raid_name="",
+            boss_hp=0,
+            turn_pct=0,
+            current_turn=0,
+            turn_target=0,
+        )
+    snapshot = runtime.get_current_progress_snapshot()
+    current_turn = snapshot.get("current_turn", 0)
+    turn_target = snapshot.get("turn_target", 0)
+    turn_pct = round((current_turn / turn_target) * 100) if turn_target > 0 else 0
+    return render_template(
+        "partials/raid_card.html",
+        is_running=snapshot.get("is_running", False),
+        current_raid_name=snapshot.get("current_raid_name", ""),
+        boss_hp=snapshot.get("boss_hp_at_entry", 0),
+        turn_pct=turn_pct,
+        current_turn=current_turn,
+        turn_target=turn_target,
+    )
+
+
+@app.route("/htmx/creator-load")
+def htmx_creator_load():
+    """Load task config into creator form."""
+    task_name = request.args.get("task_name", "")
+    if not task_name:
+        return "<p class='text-sm text-slate-400'>Select a task to load</p>"
+    tasks_dir = _get_tasks_dir()
+    task_path = tasks_dir / task_name
+    if not task_path.exists():
+        return "<p class='text-sm text-red-400'>Task not found</p>"
+    with open(task_path) as f:
+        data = json.load(f)
+    cfg = data.get("task_config", {})
+    return render_template(
+        "partials/creator_form.html",
+        task_name=task_name,
+        cfg=cfg,
+        task_type=data.get("task_type", "raid"),
+        actions=data.get("actions", []),
+    )
+
+
+@app.route("/htmx/raid-grid/<category>")
+def htmx_raid_grid(category):
+    """Return raid grid for a category."""
+    # For now, return placeholder raids. In the future, this will query the database.
+    placeholder_raids = {
+        "standard": [
+            {"raid_id": "30101", "name": "Tiamat", "stars": 3},
+            {"raid_id": "30102", "name": "Colossus", "stars": 3},
+            {"raid_id": "30103", "name": "Leviathan", "stars": 3},
+            {"raid_id": "30104", "name": "Yggdrasil", "stars": 3},
+            {"raid_id": "30105", "name": "Celeste", "stars": 3},
+            {"raid_id": "30106", "name": "Luminiera", "stars": 3},
+        ],
+        "impossible": [
+            {"raid_id": "303141", "name": "Ultimate Bahamut", "stars": 5, "badge": "1"},
+            {"raid_id": "303191", "name": "Akasha", "stars": 5},
+            {"raid_id": "303161", "name": "Grand Order", "stars": 5},
+            {"raid_id": "303221", "name": "Lucilius", "stars": 6},
+            {"raid_id": "303271", "name": "Belial", "stars": 6},
+            {"raid_id": "303281", "name": "Beelzebub", "stars": 6},
+            {"raid_id": "303291", "name": "Super Ultimate Bahamut", "stars": 6, "badge": "4"},
+        ],
+        "unlimited": [
+            {"raid_id": "305161", "name": "Hexachromatic Wings", "stars": 5},
+            {"raid_id": "305181", "name": "Six Dragons", "stars": 5},
+        ],
+    }
+    raids = placeholder_raids.get(category, [])
+    return render_template("partials/raid_grid.html", raids=raids)
+
+
+@app.route("/htmx/content-list/<content_type>")
+def htmx_content_list(content_type):
+    """Return paginated list for events or quests."""
+    page = request.args.get("page", 1, type=int)
+    per_page = 6
+
+    # Placeholder data until database is populated
+    placeholder_items = {
+        "event": [
+            {"id": "evt001", "name": "Unite and Fight", "ap_cost": 30, "ap_current": 1, "ap_max": 2, "cleared": True},
+            {"id": "evt002", "name": "Rise of the Beasts", "ap_cost": 20, "ap_current": 1, "ap_max": 2, "cleared": False},
+            {"id": "evt003", "name": "Xeno Clash", "ap_cost": 30, "ap_current": 2, "ap_max": 2, "cleared": True},
+            {"id": "evt004", "name": "Guild Wars", "ap_cost": 0, "ap_current": 1, "ap_max": 3, "cleared": False},
+            {"id": "evt005", "name": "Treasure Raid", "ap_cost": 30, "ap_current": 1, "ap_max": 2, "cleared": False},
+            {"id": "evt006", "name": "Story Event", "ap_cost": 15, "ap_current": 1, "ap_max": 2, "cleared": True},
+            {"id": "evt007", "name": "Dread Barrage", "ap_cost": 30, "ap_current": 1, "ap_max": 2, "cleared": False},
+            {"id": "evt008", "name": "A Tale of Intersecting Fates", "ap_cost": 20, "ap_current": 1, "ap_max": 2, "cleared": False},
+        ],
+        "quest": [
+            {"id": "qst001", "name": "Next Up: A Mechanical Beast?!", "ap_cost": 11, "ap_current": 1, "ap_max": 2, "cleared": True},
+            {"id": "qst002", "name": "Strength and Chivalry", "ap_cost": 25, "ap_current": 1, "ap_max": 2, "cleared": True},
+            {"id": "qst003", "name": "Baker and the Merrymaker", "ap_cost": 15, "ap_current": 1, "ap_max": 2, "cleared": True},
+            {"id": "qst004", "name": "Trust-Busting Dustup", "ap_cost": 11, "ap_current": 1, "ap_max": 2, "cleared": False},
+            {"id": "qst005", "name": "The Mysterious Room", "ap_cost": 25, "ap_current": 1, "ap_max": 2, "cleared": False},
+            {"id": "qst006", "name": "The Right of Might", "ap_cost": 25, "ap_current": 1, "ap_max": 2, "cleared": False},
+            {"id": "qst007", "name": "A Tale of Sky and Darkness", "ap_cost": 20, "ap_current": 1, "ap_max": 2, "cleared": True},
+            {"id": "qst008", "name": "Footprints on Sacred Ground", "ap_cost": 30, "ap_current": 1, "ap_max": 2, "cleared": False},
+        ],
+    }
+
+    all_items = placeholder_items.get(content_type, [])
+    total = len(all_items)
+    total_pages = (total + per_page - 1) // per_page
+    start = (page - 1) * per_page
+    end = start + per_page
+    items = all_items[start:end]
+
+    return render_template(
+        "partials/content_list.html",
+        items=items,
+        content_type=content_type,
+        current_page=page,
+        total_pages=total_pages,
+    )
+
+
+@app.route("/htmx/history-table")
+def htmx_history_table():
+    """Return history table partial."""
+    page = request.args.get("page", 1, type=int)
+    per_page = 20
+    from infra.database import get_task_history
+    items = get_task_history(limit=per_page, offset=(page - 1) * per_page)
+    return render_template(
+        "partials/history_table.html",
+        items=items,
+        page=page,
+        per_page=per_page,
+    )
 
 
 # =============================================================================
@@ -176,8 +432,37 @@ def get_task(name):
 
 
 # =============================================================================
+# Task History
+# =============================================================================
+
+@app.route("/api/history", methods=["GET"])
+def get_history():
+    """Return paginated task history."""
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+    from infra.database import get_task_history
+    items = get_task_history(limit=per_page, offset=(page - 1) * per_page)
+    return jsonify({"status": "ok", "items": items, "page": page, "per_page": per_page})
+
+
+@app.route("/api/history/<int:history_id>/drops", methods=["GET"])
+def get_history_drops(history_id):
+    """Return drop logs for a task history entry."""
+    from infra.database import get_drops_by_task_history
+    drops = get_drops_by_task_history(history_id)
+    return jsonify({"status": "ok", "drops": drops})
+
+
+# =============================================================================
 # Queue Management
 # =============================================================================
+
+def _get_request_data():
+    """Safely extract request data regardless of Content-Type."""
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+    return request.form or {}
+
 
 @app.route("/api/enqueue", methods=["POST"])
 def enqueue():
@@ -186,9 +471,9 @@ def enqueue():
     if not engine_ready:
         return jsonify({"status": "error", "message": "Engine not ready"}), 503
 
-    data = request.json or {}
+    data = _get_request_data()
     task_name = data.get("task_name")
-    amount = data.get("amount", 1)
+    amount = int(data.get("amount", 1) or 1)
 
     if not task_name:
         return jsonify({"status": "error", "message": "task_name required"}), 400
@@ -212,9 +497,19 @@ def enqueue():
         task_config=task_config,
         actions=task_def.get("actions", []),
         exit_condition=exit_condition,
+        source_file=task_name,
     )
 
     runtime.enqueue_task(task)
+
+    # If HTMX request, return success message + trigger queue refresh via header
+    if request.headers.get("HX-Request"):
+        from flask import Response
+        return Response(
+            f'<span class="text-green-600 font-medium"><i class="fa-solid fa-check mr-1"></i>Added {task_name} x{amount}</span>',
+            headers={"HX-Trigger": "queueUpdated"}
+        )
+
     return jsonify({"status": "ok", "task_name": task_name, "amount": amount})
 
 
@@ -224,20 +519,91 @@ def get_queue():
     return jsonify(_get_queue_snapshot())
 
 
+def _queue_mutable():
+    """Check if queue can be mutated. Returns (ok, error_message)."""
+    if not runtime:
+        return False, "Runtime not initialized"
+    if runtime.is_running and not runtime.is_paused:
+        return False, "Cannot modify queue while running. Pause or stop first."
+    return True, None
+
+
+@app.route("/api/sync_queue", methods=["POST"])
+def sync_queue():
+    """Replace entire queue with client-provided state."""
+    ok, err = _queue_mutable()
+    if not ok:
+        return jsonify({"status": "error", "message": err}), 409
+
+    data = _get_request_data()
+    items = data.get("items", [])
+    tasks_dir = _get_tasks_dir()
+
+    new_queue = []
+    for item in items:
+        source_file = item.get("source_file")
+        if not source_file:
+            continue
+        task_path = tasks_dir / source_file
+        if not task_path.exists():
+            continue
+        try:
+            with open(task_path) as f:
+                task_def = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        task_config = TaskConfig.from_dict(task_def.get("task_config", {}))
+        exit_condition = dict(task_def.get("exit_condition", {}))
+        if exit_condition.get("type") == "raid_count":
+            exit_condition["value"] = item.get("amount", 1)
+
+        task = Task(
+            task_id=item.get("task_id", str(uuid.uuid4())[:8]),
+            task_type=task_def.get("task_type", "raid"),
+            task_config=task_config,
+            actions=task_def.get("actions", []),
+            exit_condition=exit_condition,
+            completed=item.get("completed", 0),
+            not_found_count=item.get("not_found_count", 0),
+            source_file=source_file,
+        )
+        new_queue.append(task)
+
+    runtime.task_queue.clear()
+    runtime.task_queue.extend(new_queue)
+    runtime._persist_queue()
+
+    if request.headers.get("HX-Request"):
+        queue_items = _get_queue_snapshot()
+        snapshot = runtime.get_current_progress_snapshot()
+        return render_template("partials/queue.html", queue_items=queue_items, is_running=snapshot.get("is_running", False))
+    return jsonify({"status": "ok", "count": len(new_queue)})
+
+
 @app.route("/api/remove_from_queue", methods=["POST"])
 def remove_from_queue():
     """Remove a task from queue by index."""
-    data = request.json or {}
+    ok, err = _queue_mutable()
+    if not ok:
+        return jsonify({"status": "error", "message": err}), 409
+
+    data = _get_request_data()
     index = data.get("index")
-    if index is None or not runtime:
+    if index is None:
         return jsonify({"status": "error"}), 400
     try:
-        # deque doesn't support del by index directly
+        index = int(index)
         queue_list = list(runtime.task_queue)
         if 0 <= index < len(queue_list):
             del queue_list[index]
             runtime.task_queue.clear()
             runtime.task_queue.extend(queue_list)
+            runtime._persist_queue()
+            if request.headers.get("HX-Request"):
+                queue_items = _get_queue_snapshot()
+                snapshot = runtime.get_current_progress_snapshot()
+                return render_template("partials/queue.html", queue_items=queue_items, is_running=snapshot.get("is_running", False))
             return jsonify({"status": "ok"})
         return jsonify({"status": "error", "message": "Invalid index"}), 400
     except Exception as e:
@@ -247,18 +613,29 @@ def remove_from_queue():
 @app.route("/api/reorder_queue", methods=["POST"])
 def reorder_queue():
     """Reorder queue items."""
-    data = request.json or {}
+    ok, err = _queue_mutable()
+    if not ok:
+        return jsonify({"status": "error", "message": err}), 409
+
+    data = _get_request_data()
     old_index = data.get("old_index")
     new_index = data.get("new_index")
-    if old_index is None or new_index is None or not runtime:
+    if old_index is None or new_index is None:
         return jsonify({"status": "error"}), 400
     try:
+        old_index = int(old_index)
+        new_index = int(new_index)
         queue_list = list(runtime.task_queue)
         if 0 <= old_index < len(queue_list) and 0 <= new_index <= len(queue_list):
             item = queue_list.pop(old_index)
             queue_list.insert(new_index, item)
             runtime.task_queue.clear()
             runtime.task_queue.extend(queue_list)
+            runtime._persist_queue()
+            if request.headers.get("HX-Request"):
+                queue_items = _get_queue_snapshot()
+                snapshot = runtime.get_current_progress_snapshot()
+                return render_template("partials/queue.html", queue_items=queue_items, is_running=snapshot.get("is_running", False))
             return jsonify({"status": "ok"})
         return jsonify({"status": "error", "message": "Invalid index"}), 400
     except Exception as e:
@@ -268,8 +645,12 @@ def reorder_queue():
 @app.route("/api/clear_queue", methods=["POST"])
 def clear_queue():
     """Clear the entire queue."""
+    ok, err = _queue_mutable()
+    if not ok:
+        return jsonify({"status": "error", "message": err}), 409
+
     if runtime:
-        runtime.task_queue.clear()
+        runtime.clear_queue()
     return jsonify({"status": "ok"})
 
 
@@ -294,11 +675,28 @@ def start_runtime():
 
 @app.route("/api/stop", methods=["POST"])
 def stop_runtime():
-    """Stop runtime and clear queue."""
+    """Stop runtime. Queue is PRESERVED."""
     if runtime:
         runtime.stop()
-        runtime.task_queue.clear()
     return jsonify({"status": "stopped"})
+
+
+@app.route("/api/pause", methods=["POST"])
+def pause_runtime():
+    """Pause runtime at next boundary. Queue is preserved."""
+    if not runtime or not runtime.is_running:
+        return jsonify({"status": "error", "message": "Not running"}), 409
+    runtime.pause()
+    return jsonify({"status": "paused"})
+
+
+@app.route("/api/resume", methods=["POST"])
+def resume_runtime():
+    """Resume from paused state."""
+    if not runtime or not runtime.is_running:
+        return jsonify({"status": "error", "message": "Not running"}), 409
+    runtime.resume()
+    return jsonify({"status": "resumed"})
 
 
 # =============================================================================
@@ -313,6 +711,7 @@ def get_progress():
         return jsonify(snapshot)
     return jsonify({
         "is_running": False,
+        "is_paused": False,
         "current_state": "idle",
         "raids_completed": 0,
         "raids_target": 0,

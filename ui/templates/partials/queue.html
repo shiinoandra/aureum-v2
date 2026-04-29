@@ -1,0 +1,123 @@
+{% if queue_items %}
+<div class="space-y-2" id="queue-container"
+     data-editable="{{ 'false' if is_running else 'true' }}">
+    {% for item in queue_items %}
+    <div class="queue-item flex items-center gap-2 p-3 bg-slate-50 rounded-lg border transition-colors
+                {% if is_running %}border-slate-200 opacity-80{% else %}border-slate-200 hover:border-blue-300{% endif %}">
+
+        <!-- Order Controls -->
+        {% if not is_running %}
+        <div class="flex flex-col gap-0.5">
+            <button hx-post="/api/reorder_queue"
+                    hx-vals='{"old_index": {{ loop.index0 }}, "new_index": {{ loop.index0 - 1 }}}'
+                    hx-target="#queue-panel"
+                    class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors {% if loop.first %}opacity-20 cursor-not-allowed{% endif %}"
+                    {% if loop.first %}disabled{% endif %}
+                    title="Move up">
+                <i class="fa-solid fa-chevron-up text-xs"></i>
+            </button>
+            <button hx-post="/api/reorder_queue"
+                    hx-vals='{"old_index": {{ loop.index0 }}, "new_index": {{ loop.index0 + 1 }}}'
+                    hx-target="#queue-panel"
+                    class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors {% if loop.last %}opacity-20 cursor-not-allowed{% endif %}"
+                    {% if loop.last %}disabled{% endif %}
+                    title="Move down">
+                <i class="fa-solid fa-chevron-down text-xs"></i>
+            </button>
+        </div>
+        {% else %}
+        <span class="text-sm font-bold text-slate-400 w-5 text-center">{{ loop.index }}.</span>
+        {% endif %}
+
+        <!-- Content -->
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-slate-900 truncate">{{ item.task_type }}</span>
+                {% if not is_running %}
+                <span class="text-xs text-slate-400">{{ item.source_file }}</span>
+                {% endif %}
+            </div>
+            <div class="flex items-center gap-2 mt-1">
+                {% if not is_running %}
+                <label class="text-xs text-slate-500">Amount:</label>
+                <input type="number"
+                       class="queue-amount w-16 h-7 px-2 rounded border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                       value="{{ item.amount }}"
+                       min="1"
+                       data-index="{{ loop.index0 }}"
+                       onchange="updateQueueAmount(this)">
+                {% else %}
+                <span class="text-xs text-slate-500">x{{ item.amount }}</span>
+                {% endif %}
+                {% if item.completed > 0 %}
+                <span class="text-xs text-green-600">({{ item.completed }} done)</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-1">
+            {% if not is_running %}
+            <button hx-post="/api/remove_from_queue"
+                    hx-vals='{"index": {{ loop.index0 }}}'
+                    hx-target="#queue-panel"
+                    class="w-8 h-8 flex items-center justify-center rounded hover:bg-red-100 text-red-500 transition-colors"
+                    title="Remove">
+                <i class="fa-solid fa-trash-can text-sm"></i>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not is_running %}
+<div class="mt-3 flex justify-end">
+    <button onclick="clearQueue()"
+            class="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+        <i class="fa-solid fa-trash mr-1"></i>Clear Queue
+    </button>
+</div>
+
+<script>
+function syncQueueOrder() {
+    const container = document.getElementById('queue-container');
+    const items = [];
+    container.querySelectorAll('.queue-item').forEach(el => {
+        items.push({
+            source_file: el.dataset.source,
+            task_id: el.dataset.taskId,
+            amount: parseInt(el.querySelector('.queue-amount').value) || 1,
+            completed: parseInt(el.dataset.completed) || 0,
+            not_found_count: parseInt(el.dataset.notFound) || 0,
+        });
+    });
+
+    fetch('/api/sync_queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status !== 'ok') {
+            alert(data.message || 'Failed to sync queue');
+        }
+    });
+}
+
+function updateQueueAmount(input) {
+    syncQueueOrder();
+}
+
+function clearQueue() {
+    if (!confirm('Clear all tasks from the queue?')) return;
+    fetch('/api/clear_queue', { method: 'POST' })
+        .then(() => htmx.trigger('#queue-panel', 'load'));
+}
+</script>
+{% endif %}
+
+{% else %}
+<p class="text-sm text-slate-400 italic"><i class="fa-regular fa-circle-xmark mr-1"></i>Queue is empty. Add tasks below.</p>
+{% endif %}
