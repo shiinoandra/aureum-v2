@@ -62,6 +62,8 @@ def create_browser():
         user_data_dir = r"C:\Selenium\ChromeProfile"
     else:
         user_data_dir = os.path.expanduser("~/.config/google-chrome/selenium_profile")
+        if sys.platform == "linux":
+            chrome_options.add_argument("--ozone-platform=x11")
     os.makedirs(user_data_dir, exist_ok=True)
     driver = uc.Chrome(
         options=chrome_options, user_data_dir=user_data_dir, version_main=145
