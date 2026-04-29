@@ -17,10 +17,9 @@ class RuntimeManager:
     Responsibilities:
     - Maintain task_queue (with file persistence)
     - Spawn automation daemon thread
-    - Dequeue tasks and create TaskManagers
+    - Run tasks from queue until completion or stop
     - Handle failure policy (captcha halt, network halt, failed skip)
     - Provide progress snapshots for Flask UI
-    - Support pause/resume without losing queue state
     """
 
     def __init__(self, navigator: Navigator, tasks_dir: Optional[Path] = None):
@@ -30,7 +29,6 @@ class RuntimeManager:
         self.task_queue: deque[Task] = deque()
         self.current_task_manager: Optional[TaskManager] = None
         self.is_running = False
-        self.is_paused = False
         self._thread: Optional[threading.Thread] = None
         self._stop_requested = False
 
@@ -56,25 +54,25 @@ class RuntimeManager:
             return
 
         self.is_running = True
-        self.is_paused = False
         self._stop_requested = False
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         print("[*] RuntimeManager started")
 
     def _run_loop(self):
-        """Main loop: dequeue tasks and run them until queue empty or stopped."""
-        while self.is_running and not self._stop_requested:
-            if self.is_paused:
-                time.sleep(0.5)
-                continue
+        """Main loop: run tasks from queue until empty or stopped.
 
+        Uses queue[0] to peek at the current task instead of popleft().
+        Only removes a task when it completes successfully or fails.
+        This allows stop+start to resume the same task from its saved progress.
+        """
+        while self.is_running and not self._stop_requested:
             if not self.task_queue:
                 time.sleep(0.5)
                 continue
 
-            task = self.task_queue.popleft()
-            self._persist_queue()
+            # Peek at current task — don't remove until it finishes
+            task = self.task_queue[0]
             self.current_task_manager = TaskManager(
                 task, self.navigator, self.global_config
             )
@@ -84,7 +82,14 @@ class RuntimeManager:
             print(f"[*] Task {task.task_id} finished: {result}")
 
             # Failure policy
-            if result == "captcha":
+            if result == "completed":
+                self.task_queue.popleft()
+                self._persist_queue()
+            elif result == "failed":
+                # Skip failed task and move on
+                self.task_queue.popleft()
+                self._persist_queue()
+            elif result == "captcha":
                 print("[!!!] CAPTCHA detected. Halting runtime and clearing queue.")
                 self._stop_requested = True
                 self.task_queue.clear()
@@ -94,30 +99,15 @@ class RuntimeManager:
                 print("[!!!] Network failure. Halting runtime.")
                 self._stop_requested = True
                 break
-            # "failed" or "stopped" → just continue to next task naturally
+            elif result == "stopped":
+                # User stopped — task stays at front for resume on next start
+                pass
 
         self.is_running = False
-        self.is_paused = False
         self.current_task_manager = None
+        # Persist queue so stopped tasks retain their updated completed counts
+        self._persist_queue()
         print("[*] RuntimeManager loop ended")
-
-    def pause(self):
-        """Pause automation at next boundary. Queue is preserved."""
-        if not self.is_running:
-            print("[!] Runtime is not running, cannot pause")
-            return
-        self.is_paused = True
-        if self.current_task_manager:
-            self.current_task_manager.stop()
-        print("[*] RuntimeManager paused")
-
-    def resume(self):
-        """Resume from paused state."""
-        if not self.is_running:
-            print("[!] Runtime is not running, cannot resume")
-            return
-        self.is_paused = False
-        print("[*] RuntimeManager resumed")
 
     def stop(self):
         """Stop automation cooperatively. Queue is PRESERVED."""
@@ -128,7 +118,6 @@ class RuntimeManager:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
         self.is_running = False
-        self.is_paused = False
 
     def clear_queue(self):
         """Explicitly clear the entire queue."""
@@ -146,11 +135,9 @@ class RuntimeManager:
         if self.current_task_manager:
             snapshot = self.current_task_manager.get_progress_snapshot()
             snapshot["is_running"] = self.is_running
-            snapshot["is_paused"] = self.is_paused
             return snapshot
         return {
             "is_running": False,
-            "is_paused": False,
             "current_state": "idle",
             "raids_completed": 0,
             "raids_target": 0,

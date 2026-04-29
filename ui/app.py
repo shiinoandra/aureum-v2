@@ -122,7 +122,6 @@ def _progress_monitor():
             queue_snapshot = _get_queue_snapshot()
             payload = {
                 "is_running": snapshot["is_running"],
-                "is_paused": snapshot.get("is_paused", False),
                 "current_state": snapshot["current_state"],
                 "raids_completed": snapshot["raids_completed"],
                 "raids_target": snapshot["raids_target"],
@@ -208,7 +207,6 @@ def htmx_status():
         "partials/status_header.html",
         runtime=True,
         is_running=snapshot.get("is_running", False),
-        is_paused=snapshot.get("is_paused", False),
         current_state=snapshot.get("current_state", "idle"),
         raids_completed=raids_completed,
         raids_target=raids_target,
@@ -523,8 +521,8 @@ def _queue_mutable():
     """Check if queue can be mutated. Returns (ok, error_message)."""
     if not runtime:
         return False, "Runtime not initialized"
-    if runtime.is_running and not runtime.is_paused:
-        return False, "Cannot modify queue while running. Pause or stop first."
+    if runtime.is_running:
+        return False, "Cannot modify queue while running. Stop first."
     return True, None
 
 
@@ -681,24 +679,6 @@ def stop_runtime():
     return jsonify({"status": "stopped"})
 
 
-@app.route("/api/pause", methods=["POST"])
-def pause_runtime():
-    """Pause runtime at next boundary. Queue is preserved."""
-    if not runtime or not runtime.is_running:
-        return jsonify({"status": "error", "message": "Not running"}), 409
-    runtime.pause()
-    return jsonify({"status": "paused"})
-
-
-@app.route("/api/resume", methods=["POST"])
-def resume_runtime():
-    """Resume from paused state."""
-    if not runtime or not runtime.is_running:
-        return jsonify({"status": "error", "message": "Not running"}), 409
-    runtime.resume()
-    return jsonify({"status": "resumed"})
-
-
 # =============================================================================
 # Progress / SSE
 # =============================================================================
@@ -711,7 +691,6 @@ def get_progress():
         return jsonify(snapshot)
     return jsonify({
         "is_running": False,
-        "is_paused": False,
         "current_state": "idle",
         "raids_completed": 0,
         "raids_target": 0,

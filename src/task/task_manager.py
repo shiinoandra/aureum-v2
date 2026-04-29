@@ -28,6 +28,8 @@ class TaskManager:
         self.navigator = navigator
         self.global_config = global_config
         self.progress = TaskProgress()
+        # Resume from previously saved progress if this task was stopped mid-run
+        self.progress.raids_completed = task.completed
         self.executor = TaskExecutor(
             navigator, global_config, task.task_config, self.progress
         )
@@ -118,6 +120,9 @@ class TaskManager:
             self.progress.status = "stopped"
             return "stopped"
         finally:
+            # Persist completed count back to the Task so queue persistence
+            # can resume from the correct progress on next start.
+            self.task.completed = self.progress.raids_completed
             if self.history_id:
                 try:
                     db.update_task_history(
