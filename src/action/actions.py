@@ -13,7 +13,7 @@ import re
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException,StaleElementReferenceException
 
 from action.action_context import ActionContext
 from action.action_registry import ActionRegistry
@@ -70,7 +70,11 @@ def _check_and_handle_popup(nav: Navigator) -> Optional[str]:
     # Get text
     try:
         popup_text = popup.find_element(By.CSS_SELECTOR, "#popup-body").text.strip()
-    except:
+        
+    except StaleElementReferenceException:
+        # Popup closed before we could read it — ignore
+        return None
+    except Exception:
         popup_text = popup.text.strip()
 
     # Ignore victory/reward popups
@@ -214,12 +218,12 @@ def action_select_summon(params, context: ActionContext):
 
     # Step 1: Check auto-summon preset
     try:
-        WebDriverWait(nav.driver, 2).until(
+        WebDriverWait(nav.driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-usual-ok"))
         )
         print("[i] Auto Summon Setting Found - using preset")
         return ActionContext.RESULT_SUCCESS
-    except TimeoutException:
+    except (TimeoutException,StaleElementReferenceException):
         print("[i] Auto Summon not available - searching preferred summons...")
 
     # Step 2: Try each preferred summon in priority order
@@ -289,7 +293,7 @@ def action_join_battle(params, context: ActionContext):
         nav.click_element(quest_start_btn)
         print("[✓] Joined battle")
         return ActionContext.RESULT_SUCCESS
-    except TimeoutException:
+    except (TimeoutException,StaleElementReferenceException):
         print("[!] Quest start button not found")
     return ActionContext.RESULT_FAILED
 
@@ -630,6 +634,7 @@ def action_go_to_url(params, context: ActionContext):
     if url:
         nav.driver.get(url)
         print(f"[i] Navigated to {url}")
+        time.sleep(0.5)
     return ActionContext.RESULT_SUCCESS
 
 
