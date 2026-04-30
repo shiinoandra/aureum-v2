@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Optional, Callable
 
 from domain.state_machine import detect_state, State
 from domain.drop_logger import DropLogger
@@ -23,10 +23,17 @@ class TaskManager:
     - Write task execution history to SQLite
     """
 
-    def __init__(self, task: Task, navigator, global_config: GlobalConfig):
+    def __init__(
+        self,
+        task: Task,
+        navigator,
+        global_config: GlobalConfig,
+        on_cycle_complete: Optional[Callable] = None,
+    ):
         self.task = task
         self.navigator = navigator
         self.global_config = global_config
+        self.on_cycle_complete = on_cycle_complete
         self.progress = TaskProgress()
         # Resume from previously saved progress if this task was stopped mid-run
         self.progress.raids_completed = task.completed
@@ -37,7 +44,6 @@ class TaskManager:
         self._stop_requested = False
         self._network_retries = 0
         self._max_retries = 3
-        self.history_id: Optional[int] = None
 
     def run(self) -> str:
         """
@@ -58,15 +64,29 @@ class TaskManager:
             if self.task.exit_condition
             else None
         )
-        try:
-            self.history_id = db.insert_task_history(
-                task_name=self.task.source_file or self.task.task_id,
-                task_type=self.task.task_type,
-                target_count=target,
-            )
-        except Exception as e:
-            print(f"[!] Failed to insert task history: {e}")
-            self.history_id = None
+
+        # Reuse existing history row if this task was resumed after a stop
+        if self.task.history_id is not None:
+            try:
+                db.update_task_history(
+                    self.task.history_id,
+                    status="running",
+                    target_count=target,
+                )
+            except Exception as e:
+                print(f"[!] Failed to resume task history {self.task.history_id}: {e}")
+                self.task.history_id = None
+
+        if self.task.history_id is None:
+            try:
+                self.task.history_id = db.insert_task_history(
+                    task_name=self.task.source_file or self.task.task_id,
+                    task_type=self.task.task_type,
+                    target_count=target,
+                )
+            except Exception as e:
+                print(f"[!] Failed to insert task history: {e}")
+                self.task.history_id = None
 
         try:
             while not self._stop_requested:
@@ -86,14 +106,20 @@ class TaskManager:
                     # Post-cycle hook: if success and on result screen, log drops
                     if result == ActionContext.RESULT_SUCCESS:
                         self._handle_post_cycle()
-                        if self.history_id:
+                        if self.task.history_id:
                             try:
                                 db.update_task_history(
-                                    self.history_id,
+                                    self.task.history_id,
                                     completed_count=self.progress.raids_completed,
                                 )
                             except Exception as e:
                                 print(f"[!] Failed to update task history: {e}")
+                        # Notify RuntimeManager to persist queue with updated completed count
+                        if self.on_cycle_complete:
+                            try:
+                                self.on_cycle_complete()
+                            except Exception as e:
+                                print(f"[!] on_cycle_complete callback failed: {e}")
 
                     # Check exit condition
                     if self._check_exit_condition():
@@ -123,10 +149,10 @@ class TaskManager:
             # Persist completed count back to the Task so queue persistence
             # can resume from the correct progress on next start.
             self.task.completed = self.progress.raids_completed
-            if self.history_id:
+            if self.task.history_id:
                 try:
                     db.update_task_history(
-                        self.history_id,
+                        self.task.history_id,
                         completed_count=self.progress.raids_completed,
                         status=self.progress.status,
                     )
@@ -143,10 +169,10 @@ class TaskManager:
                 raid_id=self.progress.current_raid_id,
                 raid_name=self.progress.current_raid_name,
             )
-            if self.history_id and items_json and items_json != "[]":
+            if self.task.history_id and items_json and items_json != "[]":
                 try:
                     db.insert_drop_log(
-                        task_history_id=self.history_id,
+                        task_history_id=self.task.history_id,
                         items_json=items_json,
                         raid_id=self.progress.current_raid_id or None,
                     )

@@ -150,6 +150,7 @@ def _get_queue_snapshot():
             "amount": exit_val,
             "completed": task.completed,
             "not_found_count": task.not_found_count,
+            "history_id": task.history_id,
         })
     return result
 
@@ -283,6 +284,7 @@ def htmx_raid_card():
 @app.route("/htmx/creator-load")
 def htmx_creator_load():
     """Load task config into creator form."""
+    from infra.database import get_all_summons
     task_name = request.args.get("task_name", "")
     if not task_name:
         return "<p class='text-sm text-slate-400'>Select a task to load</p>"
@@ -293,44 +295,41 @@ def htmx_creator_load():
     with open(task_path) as f:
         data = json.load(f)
     cfg = data.get("task_config", {})
+    all_summons = get_all_summons()
     return render_template(
         "partials/creator_form.html",
         task_name=task_name,
         cfg=cfg,
         task_type=data.get("task_type", "raid"),
         actions=data.get("actions", []),
+        raid_id=data.get("raid_id"),
+        raid_name=data.get("raid_name"),
+        all_summons=all_summons,
+        selected_summons=list(cfg.get("summon_priority", [])),
     )
 
 
 @app.route("/htmx/raid-grid/<category>")
 def htmx_raid_grid(category):
-    """Return raid grid for a category."""
-    # For now, return placeholder raids. In the future, this will query the database.
-    placeholder_raids = {
-        "standard": [
-            {"raid_id": "30101", "name": "Tiamat", "stars": 3},
-            {"raid_id": "30102", "name": "Colossus", "stars": 3},
-            {"raid_id": "30103", "name": "Leviathan", "stars": 3},
-            {"raid_id": "30104", "name": "Yggdrasil", "stars": 3},
-            {"raid_id": "30105", "name": "Celeste", "stars": 3},
-            {"raid_id": "30106", "name": "Luminiera", "stars": 3},
-        ],
-        "impossible": [
-            {"raid_id": "303141", "name": "Ultimate Bahamut", "stars": 5, "badge": "1"},
-            {"raid_id": "303191", "name": "Akasha", "stars": 5},
-            {"raid_id": "303161", "name": "Grand Order", "stars": 5},
-            {"raid_id": "303221", "name": "Lucilius", "stars": 6},
-            {"raid_id": "303271", "name": "Belial", "stars": 6},
-            {"raid_id": "303281", "name": "Beelzebub", "stars": 6},
-            {"raid_id": "303291", "name": "Super Ultimate Bahamut", "stars": 6, "badge": "4"},
-        ],
-        "unlimited": [
-            {"raid_id": "305161", "name": "Hexachromatic Wings", "stars": 5},
-            {"raid_id": "305181", "name": "Six Dragons", "stars": 5},
-        ],
-    }
-    raids = placeholder_raids.get(category, [])
-    return render_template("partials/raid_grid.html", raids=raids)
+    """Return raid grid for a category from the database."""
+    from infra.database import get_all_raids
+    try:
+        all_raids = get_all_raids()
+        if category == "all":
+            raids = all_raids
+        elif category == "v2":
+            raids = [r for r in all_raids if r.get("v2")]
+        elif category == "standard":
+            raids = [r for r in all_raids if r.get("difficulty") in ("Normal", "Hard", "Very Hard", "Extreme")]
+        elif category == "impossible":
+            raids = [r for r in all_raids if r.get("difficulty") == "Impossible" and not r.get("v2")]
+        elif category == "unlimited":
+            raids = [r for r in all_raids if r.get("difficulty") in ("Impossible+", "Nightmare")]
+        else:
+            raids = all_raids
+        return render_template("partials/raid_grid.html", raids=raids, category=category)
+    except Exception as e:
+        return f"<p class='text-sm text-red-500'>Error loading raids: {e}</p>"
 
 
 @app.route("/htmx/content-list/<content_type>")
@@ -415,6 +414,41 @@ def list_tasks():
         return jsonify([])
     files = sorted([f.name for f in tasks_dir.glob("*.json")])
     return jsonify(files)
+
+
+@app.route("/api/summons", methods=["GET"])
+def get_summons():
+    """Return all summons from the database."""
+    from infra.database import get_all_summons
+    try:
+        summons = get_all_summons()
+        return jsonify({"status": "ok", "summons": summons})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/raids", methods=["GET"])
+def get_raids():
+    """Return raids from the database, optionally filtered by category."""
+    from infra.database import get_all_raids
+    category = request.args.get("category", "all")
+    try:
+        all_raids = get_all_raids()
+        if category == "all":
+            raids = all_raids
+        elif category == "v2":
+            raids = [r for r in all_raids if r.get("v2")]
+        elif category == "standard":
+            raids = [r for r in all_raids if r.get("difficulty") in ("Normal", "Hard", "Very Hard", "Extreme")]
+        elif category == "impossible":
+            raids = [r for r in all_raids if r.get("difficulty") == "Impossible" and not r.get("v2")]
+        elif category == "unlimited":
+            raids = [r for r in all_raids if r.get("difficulty") in ("Impossible+", "Nightmare")]
+        else:
+            raids = all_raids
+        return jsonify({"status": "ok", "raids": raids})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/task/<name>", methods=["GET"])
@@ -537,6 +571,9 @@ def sync_queue():
     items = data.get("items", [])
     tasks_dir = _get_tasks_dir()
 
+    # Build lookup of existing tasks to preserve backend-only fields
+    old_tasks = {t.task_id: t for t in runtime.task_queue}
+
     new_queue = []
     for item in items:
         source_file = item.get("source_file")
@@ -556,15 +593,24 @@ def sync_queue():
         if exit_condition.get("type") == "raid_count":
             exit_condition["value"] = item.get("amount", 1)
 
+        task_id = item.get("task_id", str(uuid.uuid4())[:8])
+        old_task = old_tasks.get(task_id)
+
+        # Preserve backend-only fields from existing task if present
+        completed = old_task.completed if old_task else 0
+        not_found_count = old_task.not_found_count if old_task else 0
+        history_id = old_task.history_id if old_task else None
+
         task = Task(
-            task_id=item.get("task_id", str(uuid.uuid4())[:8]),
+            task_id=task_id,
             task_type=task_def.get("task_type", "raid"),
             task_config=task_config,
             actions=task_def.get("actions", []),
             exit_condition=exit_condition,
-            completed=item.get("completed", 0),
-            not_found_count=item.get("not_found_count", 0),
+            completed=completed,
+            not_found_count=not_found_count,
             source_file=source_file,
+            history_id=history_id,
         )
         new_queue.append(task)
 
@@ -794,7 +840,7 @@ def discover_event():
 @app.route("/api/save_task", methods=["POST"])
 def save_task():
     """Save a task definition to tasks/ directory."""
-    data = request.json or {}
+    data = request.json or request.form or {}
     filename = data.get("filename")
     if not filename:
         return jsonify({"status": "error", "message": "filename required"}), 400
@@ -806,16 +852,44 @@ def save_task():
     tasks_dir.mkdir(exist_ok=True)
     task_path = tasks_dir / filename
 
+    # Handle summon priority from JSON string (HTMX form) or direct list (JSON API)
+    summon_priority = data.get("summon_priority", [])
+    if not summon_priority and data.get("summon_priority_json"):
+        try:
+            summon_priority = json.loads(data.get("summon_priority_json"))
+        except (json.JSONDecodeError, TypeError):
+            summon_priority = []
+
+    task_config = {
+        "turn": int(data.get("turn", 1)),
+        "refresh": data.get("refresh", "false").lower() == "true" if isinstance(data.get("refresh"), str) else bool(data.get("refresh", False)),
+        "until_finish": data.get("until_finish", "false").lower() == "true" if isinstance(data.get("until_finish"), str) else bool(data.get("until_finish", False)),
+        "trigger_skip": data.get("trigger_skip", "false").lower() == "true" if isinstance(data.get("trigger_skip"), str) else bool(data.get("trigger_skip", False)),
+        "pre_fa": data.get("pre_fa", "false").lower() == "true" if isinstance(data.get("pre_fa"), str) else bool(data.get("pre_fa", False)),
+        "min_hp_threshold": int(data.get("min_hp_threshold", 60)),
+        "max_hp_threshold": int(data.get("max_hp_threshold", 100)),
+        "min_people": int(data.get("min_people", 1)),
+        "max_people": int(data.get("max_people", 30)),
+        "summon_priority": summon_priority,
+    }
+
     task_def = {
-        "task_type": data.get("task_type", "quest"),
-        "task_config": data.get("task_config", {}),
-        "actions": data.get("actions", []),
-        "exit_condition": data.get("exit_condition", {"type": "raid_count", "value": 10}),
+        "task_type": data.get("task_type", "raid"),
+        "raid_id": data.get("raid_id") or None,
+        "task_config": task_config,
+        "actions": data.get("actions", [
+            {"name": "refresh_raid_list", "params": {}, "transitions": {"success": "select_raid", "failed": "refresh_raid_list"}},
+            {"name": "select_raid", "params": {"filter": "prefer_Lv100"}, "transitions": {"success": "select_summon", "failed": "refresh_raid_list"}},
+            {"name": "select_summon", "params": {}, "transitions": {"success": "join_battle", "failed": "select_raid"}},
+            {"name": "join_battle", "params": {}, "transitions": {"success": "do_battle", "failed": "select_raid"}},
+            {"name": "do_battle", "params": {"mode": "full_auto"}, "transitions": {"success": "select_raid", "failed": "select_raid"}},
+        ]),
+        "exit_condition": {"type": "raid_count", "value": int(data.get("amount", 10))},
     }
 
     try:
         with open(task_path, "w", encoding="utf-8") as f:
-            json.dump(task_def, f, indent=2)
+            json.dump(task_def, f, indent=2, ensure_ascii=False)
         return jsonify({"status": "ok", "filename": filename})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

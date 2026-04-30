@@ -1,6 +1,18 @@
 <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
     <h3 class="text-sm font-semibold text-slate-700 mb-4">Battle Parameters</h3>
 
+    <!-- Linked Raid (if any) -->
+    {% if raid_id %}
+    <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center gap-3">
+        <i class="fa-solid fa-shield-halved text-blue-600"></i>
+        <div>
+            <p class="text-xs text-blue-600 font-semibold uppercase">Linked Raid</p>
+            <p class="text-sm font-medium text-slate-900">{{ raid_name | default(raid_id) }}</p>
+        </div>
+        <input type="hidden" name="raid_id" value="{{ raid_id }}">
+    </div>
+    {% endif %}
+
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Turns</label>
@@ -67,19 +79,17 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Max Players</label>
             <input type="number" name="max_people" value="{{ cfg.max_people | default(30) }}" min="1" max="30"
                    class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-        <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Summon Priority</label>
-            <input type="text" name="summons" value="" disabled
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                   placeholder="Summon editing coming soon">
-            <p class="text-xs text-slate-400 mt-1">Summon editing will be added in a future update.</p>
-        </div>
+    </div>
+
+    <!-- Summon Priority Picker -->
+    <div class="mb-4">
+        {% include "partials/summon_picker.html" %}
     </div>
 </div>
 

@@ -19,6 +19,7 @@ def save_queue(task_queue: deque[Task], path: Optional[Path] = None) -> None:
             "amount": task.exit_condition.get("value", 1) if task.exit_condition else 1,
             "completed": task.completed,
             "not_found_count": task.not_found_count,
+            "history_id": task.history_id,
         })
     with open(target, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -68,6 +69,7 @@ def load_queue(tasks_dir: Path, path: Optional[Path] = None) -> deque[Task]:
             completed=item.get("completed", 0),
             not_found_count=item.get("not_found_count", 0),
             source_file=source_file,
+            history_id=item.get("history_id"),
         )
         result.append(task)
 

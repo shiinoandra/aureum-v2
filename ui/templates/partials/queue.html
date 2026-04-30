@@ -5,8 +5,7 @@
                 {% if is_running %}opacity-80{% else %}hover:border-blue-300{% endif %} transition-colors"
          data-source="{{ item.source_file }}"
          data-task-id="{{ item.task_id }}"
-         data-completed="{{ item.completed }}"
-         data-not-found="{{ item.not_found_count }}">
+         data-history-id="{{ item.history_id or '' }}">
 
         <!-- Queue Number -->
         <span class="text-sm font-bold text-slate-400 w-5 text-center select-none">{{ loop.index }}.</span>
@@ -86,8 +85,6 @@ function syncQueueOrder() {
             source_file: el.dataset.source,
             task_id: el.dataset.taskId,
             amount: parseInt(amountInput ? amountInput.value : 1) || 1,
-            completed: parseInt(el.dataset.completed) || 0,
-            not_found_count: parseInt(el.dataset.notFound) || 0,
         });
     });
 

@@ -1,0 +1,9 @@
+[
+  {
+    "source_file": "raid.json",
+    "amount": 10,
+    "completed": 5,
+    "not_found_count": 0,
+    "history_id": 42
+  }
+]

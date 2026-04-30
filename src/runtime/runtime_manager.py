@@ -74,7 +74,8 @@ class RuntimeManager:
             # Peek at current task — don't remove until it finishes
             task = self.task_queue[0]
             self.current_task_manager = TaskManager(
-                task, self.navigator, self.global_config
+                task, self.navigator, self.global_config,
+                on_cycle_complete=self._persist_queue,
             )
 
             print(f"[*] Starting task {task.task_id} ({task.task_type})")
@@ -116,7 +117,7 @@ class RuntimeManager:
         if self.current_task_manager:
             self.current_task_manager.stop()
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=60)
         self.is_running = False
 
     def clear_queue(self):

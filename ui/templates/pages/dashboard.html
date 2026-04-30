@@ -62,7 +62,7 @@
     <!-- Pick Content Tab -->
     <div id="task-content-content" class="task-content hidden">
         <p class="text-sm text-slate-500 mb-4 text-center">Select content type to browse available tasks</p>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto">
             <!-- Raid Button -->
             <button onclick="openContentModal('raid')"
                     class="group flex flex-col items-center gap-3 p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all">
@@ -72,6 +72,18 @@
                 <div class="text-center">
                     <span class="text-sm font-semibold text-slate-900 block">Raid</span>
                     <span class="text-xs text-slate-500">Browse raid grid</span>
+                </div>
+            </button>
+
+            <!-- v2 Button -->
+            <button onclick="openContentModal('v2')"
+                    class="group flex flex-col items-center gap-3 p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-purple-400 hover:shadow-lg transition-all">
+                <div class="w-14 h-14 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-shield-halved text-2xl text-purple-600"></i>
+                </div>
+                <div class="text-center">
+                    <span class="text-sm font-semibold text-slate-900 block">v2 Raids</span>
+                    <span class="text-xs text-slate-500">v2 battle system</span>
                 </div>
             </button>
 
@@ -121,6 +133,15 @@
                     </button>
                 </div>
 
+                <!-- Raid Category Tabs (shown only for raid content) -->
+                <div id="raid-category-tabs" class="hidden flex gap-1 px-6 py-3 border-b border-slate-200 bg-slate-50">
+                    <button onclick="switchRaidCategory('all')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white transition-colors">All</button>
+                    <button onclick="switchRaidCategory('standard')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Standard</button>
+                    <button onclick="switchRaidCategory('impossible')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Impossible</button>
+                    <button onclick="switchRaidCategory('unlimited')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Unlimited</button>
+                    <button onclick="switchRaidCategory('v2')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">v2</button>
+                </div>
+
                 <!-- Content Area -->
                 <div class="p-6 bg-slate-50 max-h-[65vh] overflow-y-auto">
                     <div id="content-list-area" hx-get="/htmx/content-list/raid" hx-trigger="load"></div>
@@ -161,9 +182,11 @@ function openContentModal(type) {
     currentContentType = type;
     const modal = document.getElementById('contentModal');
     const title = document.getElementById('content-modal-title');
+    const raidTabs = document.getElementById('raid-category-tabs');
 
     const titles = {
         'raid': 'Select Raid',
+        'v2': 'Select v2 Raid',
         'event': 'Select Event',
         'quest': 'Select Quest'
     };
@@ -172,15 +195,33 @@ function openContentModal(type) {
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 
+    // Show/hide raid category tabs
+    if (type === 'raid' || type === 'v2') {
+        raidTabs.classList.remove('hidden');
+    } else {
+        raidTabs.classList.add('hidden');
+    }
+
     // Load appropriate content
     const listArea = document.getElementById('content-list-area');
-    listArea.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>';
+    listArea.innerHTML = '<div class="flex justify-center py-8"><i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>';
 
     if (type === 'raid') {
-        htmx.ajax('GET', '/htmx/raid-grid/standard', { target: '#content-list-area' });
+        htmx.ajax('GET', '/htmx/raid-grid/all', { target: '#content-list-area' });
+        resetRaidTabStyles('all');
+    } else if (type === 'v2') {
+        htmx.ajax('GET', '/htmx/raid-grid/v2', { target: '#content-list-area' });
+        resetRaidTabStyles('v2');
     } else {
         htmx.ajax('GET', '/htmx/content-list/' + type, { target: '#content-list-area' });
     }
+}
+
+function resetRaidTabStyles(activeCategory) {
+    document.querySelectorAll('.raid-tab-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('bg-white', 'text-slate-600', 'border', 'border-slate-200');
+    });
 }
 
 function closeContentModal() {
@@ -219,15 +260,14 @@ function loadContentPage(type, page) {
 }
 
 function switchRaidCategory(category) {
-    document.querySelectorAll('[id^="raid-tab-"]').forEach(btn => {
-        btn.classList.remove('bg-blue-600');
-        btn.classList.add('bg-slate-700', 'hover:bg-slate-600');
+    document.querySelectorAll('.raid-tab-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('bg-white', 'text-slate-600', 'border', 'border-slate-200');
     });
-    document.getElementById('raid-tab-' + category).classList.remove('bg-slate-700', 'hover:bg-slate-600');
-    document.getElementById('raid-tab-' + category).classList.add('bg-blue-600');
-
+    // The clicked button is the event target, but since it's inline onclick we can't easily get it.
+    // Instead we just reload the grid.
     const grid = document.getElementById('content-list-area');
-    grid.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>';
+    grid.innerHTML = '<div class="flex justify-center py-8"><i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>';
     htmx.ajax('GET', '/htmx/raid-grid/' + category, { target: '#content-list-area' });
 }
 

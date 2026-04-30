@@ -59,3 +59,4 @@ class Task:
     completed: int = 0      # How many raids/quests already completed (for queue persistence)
     not_found_count: int = 0  # Consecutive "not found" failures (for interchangeable switching)
     source_file: str = ""   # e.g. "raid.json" — filename in tasks/ directory
+    history_id: Optional[int] = None  # SQLite task_history row ID (survives stop/resume)

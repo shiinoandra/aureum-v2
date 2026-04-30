@@ -21,11 +21,25 @@
     </div>
 </div>
 
+<!-- Create from Raid -->
+<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Create from Raid</h3>
+    <p class="text-sm text-slate-500 mb-3">Pick a raid from the database to auto-generate a task JSON with pre-filled battle parameters.</p>
+    <div class="flex gap-3 mb-3">
+        <button onclick="openRaidPicker()"
+                class="h-12 px-5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2">
+            <i class="fa-solid fa-shield-halved"></i>
+            Browse Raids
+        </button>
+    </div>
+    <div id="raid-picker-result" class="hidden"></div>
+</div>
+
 <!-- Creator Form (loaded dynamically) -->
 <div id="creator-form">
     <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
         <h3 class="text-sm font-semibold text-slate-700 mb-4">Battle Parameters</h3>
-        <p class="text-sm text-slate-400">Select a task above to load its parameters for editing.</p>
+        <p class="text-sm text-slate-400">Select a task above or create from a raid to load its parameters for editing.</p>
     </div>
 </div>
 
@@ -54,4 +68,158 @@
         <button class="h-12 px-5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition-colors">Generate Selected</button>
     </div>
 </div>
+
+<!-- Raid Picker Modal -->
+<div id="raidPickerModal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" onclick="closeRaidPicker()"></div>
+    <div class="fixed inset-0 z-10 overflow-y-auto">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="relative transform overflow-hidden rounded-xl bg-white shadow-2xl transition-all w-full max-w-3xl">
+                <!-- Modal Header -->
+                <div class="bg-slate-800 px-6 py-4 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-white">Select Raid</h3>
+                    <button onclick="closeRaidPicker()" class="text-slate-400 hover:text-white transition-colors">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Category Tabs -->
+                <div class="flex gap-1 px-6 py-3 border-b border-slate-200 bg-slate-50">
+                    {% set categories = [
+                        ('all', 'All'),
+                        ('standard', 'Standard'),
+                        ('impossible', 'Impossible'),
+                        ('unlimited', 'Unlimited'),
+                        ('v2', 'v2')
+                    ] %}
+                    {% for cat_id, cat_label in categories %}
+                    <button id="raid-cat-{{ cat_id }}" onclick="switchRaidCategory('{{ cat_id }}')"
+                            class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors {% if loop.first %}bg-blue-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-100 border border-slate-200{% endif %}">
+                        {{ cat_label }}
+                    </button>
+                    {% endfor %}
+                </div>
+
+                <!-- Content Area -->
+                <div class="p-6 bg-slate-50 max-h-[60vh] overflow-y-auto">
+                    <div id="raid-picker-grid" hx-get="/htmx/raid-grid/all" hx-trigger="load"></div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-white px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                    <button onclick="closeRaidPicker()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentRaidCategory = 'all';
+let selectedRaidId = null;
+let selectedRaidName = null;
+
+function openRaidPicker() {
+    document.getElementById('raidPickerModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeRaidPicker() {
+    document.getElementById('raidPickerModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+function switchRaidCategory(category) {
+    currentRaidCategory = category;
+    // Update tab styles
+    document.querySelectorAll('[id^="raid-cat-"]').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('bg-white', 'text-slate-600', 'border', 'border-slate-200');
+    });
+    const activeBtn = document.getElementById('raid-cat-' + category);
+    activeBtn.classList.remove('bg-white', 'text-slate-600', 'border', 'border-slate-200');
+    activeBtn.classList.add('bg-blue-600', 'text-white');
+
+    // Load grid
+    const grid = document.getElementById('raid-picker-grid');
+    grid.innerHTML = '<div class="flex justify-center py-8"><i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>';
+    htmx.ajax('GET', '/htmx/raid-grid/' + category, { target: '#raid-picker-grid' });
+}
+
+function selectContent(id, name, type) {
+    if (type === 'raid') {
+        closeRaidPicker();
+        selectedRaidId = id;
+        selectedRaidName = name;
+
+        const result = document.getElementById('raid-picker-result');
+        result.classList.remove('hidden');
+        result.innerHTML = `
+            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-blue-600 font-semibold uppercase">Selected Raid</p>
+                        <p class="text-lg font-bold text-slate-900">${name}</p>
+                        <p class="text-xs text-slate-500">ID: ${id}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="number" id="raidTaskAmount" value="10" min="1"
+                               class="w-20 h-10 px-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-900 text-center">
+                        <button onclick="createTaskFromRaid('${id}', '${name}')"
+                                class="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors">
+                            Create Task
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function createTaskFromRaid(raidId, raidName) {
+    const amount = document.getElementById('raidTaskAmount').value || 10;
+    const filename = prompt('Enter filename for the new task:', `${raidId}.json`);
+    if (!filename) return;
+
+    fetch('/api/save_task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            filename: filename,
+            task_type: 'raid',
+            raid_id: raidId,
+            amount: parseInt(amount),
+            turn: 1,
+            refresh: true,
+            until_finish: false,
+            trigger_skip: false,
+            pre_fa: false,
+            min_hp_threshold: 60,
+            max_hp_threshold: 100,
+            min_people: 1,
+            max_people: 30,
+            summon_priority: [],
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert('Created: ' + data.filename);
+            // Reload task list
+            location.reload();
+        } else {
+            alert(data.message || 'Failed to create task');
+        }
+    });
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeRaidPicker();
+});
+</script>
 {% endblock %}
