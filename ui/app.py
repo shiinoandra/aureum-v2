@@ -284,7 +284,7 @@ def htmx_raid_card():
 @app.route("/htmx/creator-load")
 def htmx_creator_load():
     """Load task config into creator form."""
-    from infra.database import get_all_summons
+    from infra.database import get_all_summons, get_raid_by_id
     task_name = request.args.get("task_name", "")
     if not task_name:
         return "<p class='text-sm text-slate-400'>Select a task to load</p>"
@@ -296,14 +296,33 @@ def htmx_creator_load():
         data = json.load(f)
     cfg = data.get("task_config", {})
     all_summons = get_all_summons()
+
+    # Look up raid info if raid_id is present
+    raid_id = data.get("raid_id")
+    raid_name = None
+    raid_level = None
+    raid_difficulty = None
+    if raid_id:
+        raid = get_raid_by_id(raid_id)
+        if raid:
+            raid_name = raid.get("name")
+            raid_level = raid.get("level")
+            raid_difficulty = raid.get("difficulty")
+
+    exit_cond = data.get("exit_condition", {})
+    amount = exit_cond.get("value", 10) if exit_cond.get("type") == "raid_count" else 10
+
     return render_template(
         "partials/creator_form.html",
         task_name=task_name,
         cfg=cfg,
         task_type=data.get("task_type", "raid"),
         actions=data.get("actions", []),
-        raid_id=data.get("raid_id"),
-        raid_name=data.get("raid_name"),
+        raid_id=raid_id,
+        raid_name=raid_name,
+        raid_level=raid_level,
+        raid_difficulty=raid_difficulty,
+        amount=amount,
         all_summons=all_summons,
         selected_summons=list(cfg.get("summon_priority", [])),
     )
@@ -837,10 +856,26 @@ def discover_event():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _parse_bool_value(value):
+    """Parse a boolean value from various input sources (checkbox, JSON, form)."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "on", "yes")
+    return bool(value)
+
+
 @app.route("/api/save_task", methods=["POST"])
 def save_task():
-    """Save a task definition to tasks/ directory."""
-    data = request.json or request.form or {}
+    """Save a task definition to tasks/ directory.
+
+    Accepts both JSON (Content-Type: application/json) and form-encoded data.
+    """
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.form or {}
+
     filename = data.get("filename")
     if not filename:
         return jsonify({"status": "error", "message": "filename required"}), 400
@@ -861,30 +896,40 @@ def save_task():
             summon_priority = []
 
     task_config = {
-        "turn": int(data.get("turn", 1)),
-        "refresh": data.get("refresh", "false").lower() == "true" if isinstance(data.get("refresh"), str) else bool(data.get("refresh", False)),
-        "until_finish": data.get("until_finish", "false").lower() == "true" if isinstance(data.get("until_finish"), str) else bool(data.get("until_finish", False)),
-        "trigger_skip": data.get("trigger_skip", "false").lower() == "true" if isinstance(data.get("trigger_skip"), str) else bool(data.get("trigger_skip", False)),
-        "pre_fa": data.get("pre_fa", "false").lower() == "true" if isinstance(data.get("pre_fa"), str) else bool(data.get("pre_fa", False)),
-        "min_hp_threshold": int(data.get("min_hp_threshold", 60)),
-        "max_hp_threshold": int(data.get("max_hp_threshold", 100)),
-        "min_people": int(data.get("min_people", 1)),
-        "max_people": int(data.get("max_people", 30)),
+        "turn": int(data.get("turn", 1) or 1),
+        "refresh": _parse_bool_value(data.get("refresh", False)),
+        "until_finish": _parse_bool_value(data.get("until_finish", False)),
+        "trigger_skip": _parse_bool_value(data.get("trigger_skip", False)),
+        "pre_fa": _parse_bool_value(data.get("pre_fa", False)),
+        "min_hp_threshold": int(data.get("min_hp_threshold", 60) or 60),
+        "max_hp_threshold": int(data.get("max_hp_threshold", 100) or 100),
+        "min_people": int(data.get("min_people", 1) or 1),
+        "max_people": int(data.get("max_people", 30) or 30),
         "summon_priority": summon_priority,
     }
+
+    # Preserve existing actions if file already exists
+    existing_actions = None
+    if task_path.exists():
+        try:
+            with open(task_path, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+            existing_actions = existing.get("actions")
+        except Exception:
+            pass
 
     task_def = {
         "task_type": data.get("task_type", "raid"),
         "raid_id": data.get("raid_id") or None,
         "task_config": task_config,
-        "actions": data.get("actions", [
+        "actions": existing_actions or [
             {"name": "refresh_raid_list", "params": {}, "transitions": {"success": "select_raid", "failed": "refresh_raid_list"}},
             {"name": "select_raid", "params": {"filter": "prefer_Lv100"}, "transitions": {"success": "select_summon", "failed": "refresh_raid_list"}},
             {"name": "select_summon", "params": {}, "transitions": {"success": "join_battle", "failed": "select_raid"}},
             {"name": "join_battle", "params": {}, "transitions": {"success": "do_battle", "failed": "select_raid"}},
             {"name": "do_battle", "params": {"mode": "full_auto"}, "transitions": {"success": "select_raid", "failed": "select_raid"}},
-        ]),
-        "exit_condition": {"type": "raid_count", "value": int(data.get("amount", 10))},
+        ],
+        "exit_condition": {"type": "raid_count", "value": int(data.get("amount", 10) or 10)},
     }
 
     try:

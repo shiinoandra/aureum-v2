@@ -1,109 +1,227 @@
-<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
-    <h3 class="text-sm font-semibold text-slate-700 mb-4">Battle Parameters</h3>
+<div id="creator-form-wrapper" class="space-y-4">
+    <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
+        <h3 class="text-sm font-semibold text-slate-700 mb-4">Battle Parameters</h3>
 
-    <!-- Linked Raid (if any) -->
-    {% if raid_id %}
-    <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center gap-3">
-        <i class="fa-solid fa-shield-halved text-blue-600"></i>
-        <div>
-            <p class="text-xs text-blue-600 font-semibold uppercase">Linked Raid</p>
-            <p class="text-sm font-medium text-slate-900">{{ raid_name | default(raid_id) }}</p>
+        <!-- Linked Raid (if any) -->
+        {% if raid_id %}
+        <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center gap-3">
+            <i class="fa-solid fa-shield-halved text-blue-600"></i>
+            <div class="flex-1">
+                <p class="text-xs text-blue-600 font-semibold uppercase">Linked Raid</p>
+                <p class="text-sm font-medium text-slate-900">{{ raid_name | default(raid_id) }}</p>
+            </div>
+            {% if raid_level %}
+            <span class="text-xs text-slate-500">Lv.{{ raid_level }}</span>
+            {% endif %}
+            {% if raid_difficulty %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-200 text-slate-700">{{ raid_difficulty }}</span>
+            {% endif %}
         </div>
         <input type="hidden" name="raid_id" value="{{ raid_id }}">
-    </div>
-    {% endif %}
+        {% endif %}
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Turns</label>
-            <input type="number" name="turn" value="{{ cfg.turn | default(1) }}" min="1" max="100"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+        <!-- Task Type + Amount -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
-                <span class="text-sm font-semibold text-slate-900 block">Refresh</span>
-                <p class="text-xs text-slate-500">Reload state between turns</p>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Task Type</label>
+                <input type="text" name="task_type" value="{{ task_type | default('raid') }}" readonly
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 bg-slate-50 focus:outline-none">
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="refresh" class="sr-only peer" {% if cfg.refresh %}checked{% endif %}>
-                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-        </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
             <div>
-                <span class="text-sm font-semibold text-slate-900 block">Until finish</span>
-                <p class="text-xs text-slate-500">Stay until boss dies</p>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Amount (runs)</label>
+                <input type="number" name="amount" value="{{ amount | default(10) }}" min="1"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="until_finish" class="sr-only peer" {% if cfg.until_finish %}checked{% endif %}>
-                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
         </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div>
-                <span class="text-sm font-semibold text-slate-900 block">Trigger skip</span>
-                <p class="text-xs text-slate-500">Skip entrance animation</p>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Turns</label>
+                <input type="number" name="turn" value="{{ cfg.turn | default(1) }}" min="1" max="100"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="trigger_skip" class="sr-only peer" {% if cfg.trigger_skip %}checked{% endif %}>
-                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                <div>
+                    <span class="text-sm font-semibold text-slate-900 block">Refresh</span>
+                    <p class="text-xs text-slate-500">Reload state between turns</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="refresh" class="sr-only peer" {% if cfg.refresh %}checked{% endif %}>
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                <div>
+                    <span class="text-sm font-semibold text-slate-900 block">Until finish</span>
+                    <p class="text-xs text-slate-500">Stay until boss dies</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="until_finish" class="sr-only peer" {% if cfg.until_finish %}checked{% endif %}>
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                <div>
+                    <span class="text-sm font-semibold text-slate-900 block">Trigger skip</span>
+                    <p class="text-xs text-slate-500">Skip entrance animation</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="trigger_skip" class="sr-only peer" {% if cfg.trigger_skip %}checked{% endif %}>
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
+                <div>
+                    <span class="text-sm font-semibold text-slate-900 block">Pre-emptive auto</span>
+                    <p class="text-xs text-slate-500">Click before battle</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="pre_fa" class="sr-only peer" {% if cfg.pre_fa %}checked{% endif %}>
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">HP Min %</label>
+                <input type="number" name="min_hp_threshold" value="{{ cfg.min_hp_threshold | default(60) }}" min="0" max="100"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">HP Max %</label>
+                <input type="number" name="max_hp_threshold" value="{{ cfg.max_hp_threshold | default(100) }}" min="0" max="100"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Min Players</label>
+                <input type="number" name="min_people" value="{{ cfg.min_people | default(1) }}" min="1" max="30"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Max Players</label>
+                <input type="number" name="max_people" value="{{ cfg.max_people | default(30) }}" min="1" max="30"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div>
+
+        <!-- Summon Priority Picker -->
+        <div class="mb-4">
+            {% include "partials/summon_picker.html" %}
         </div>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
-            <div>
-                <span class="text-sm font-semibold text-slate-900 block">Pre-emptive auto</span>
-                <p class="text-xs text-slate-500">Click before battle</p>
+    <!-- Save / Enqueue -->
+    <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+        <div class="flex flex-col sm:flex-row gap-3 items-end">
+            <div class="flex-1">
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Filename</label>
+                <input type="text" id="save-filename" name="filename" value="{{ task_name }}"
+                       class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="pre_fa" class="sr-only peer" {% if cfg.pre_fa %}checked{% endif %}>
-                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
+            <div class="flex gap-2">
+                <button onclick="saveTaskJson()"
+                        class="h-12 px-5 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg shadow-sm transition-colors">
+                    Save JSON
+                </button>
+                <button onclick="saveAndEnqueueTask()"
+                        class="h-12 px-5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i>
+                    Save & Add to Queue
+                </button>
+            </div>
         </div>
-        <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">HP Min %</label>
-            <input type="number" name="min_hp_threshold" value="{{ cfg.min_hp_threshold | default(60) }}" min="0" max="100"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">HP Max %</label>
-            <input type="number" name="max_hp_threshold" value="{{ cfg.max_hp_threshold | default(100) }}" min="0" max="100"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Min Players</label>
-            <input type="number" name="min_people" value="{{ cfg.min_people | default(1) }}" min="1" max="30"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-    </div>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-        <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Max Players</label>
-            <input type="number" name="max_people" value="{{ cfg.max_people | default(30) }}" min="1" max="30"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-    </div>
-
-    <!-- Summon Priority Picker -->
-    <div class="mb-4">
-        {% include "partials/summon_picker.html" %}
+        <div id="save-result" class="mt-2 text-sm"></div>
     </div>
 </div>
 
-<!-- Save Task -->
-<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 mt-4">
-    <h3 class="text-sm font-semibold text-slate-700 mb-3">Save Task</h3>
-    <div class="flex gap-3 items-end">
-        <div class="flex-1">
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Filename</label>
-            <input type="text" name="filename" value="{{ task_name }}"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <button hx-post="/api/save_task"
-                hx-include="closest div"
-                class="h-12 px-5 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg shadow-sm transition-colors">Save JSON</button>
-    </div>
-</div>
+<script>
+function gatherCreatorFormData() {
+    const wrapper = document.getElementById('creator-form-wrapper');
+    const formData = new FormData();
+
+    // Gather all named inputs
+    wrapper.querySelectorAll('input[name], select[name]').forEach(el => {
+        if (el.type === 'checkbox') {
+            formData.append(el.name, el.checked ? 'true' : 'false');
+        } else {
+            formData.append(el.name, el.value);
+        }
+    });
+
+    // Summon priority from hidden input
+    const summonInput = document.getElementById('summon-priority-input');
+    if (summonInput) {
+        formData.append('summon_priority_json', summonInput.value);
+    }
+
+    return formData;
+}
+
+function saveTaskJson() {
+    const formData = gatherCreatorFormData();
+    const result = document.getElementById('save-result');
+
+    fetch('/api/save_task', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            result.innerHTML = '<span class="text-green-600 font-medium"><i class="fa-solid fa-check mr-1"></i>Saved: ' + data.filename + '</span>';
+        } else {
+            result.innerHTML = '<span class="text-red-600 font-medium">Error: ' + (data.message || 'Save failed') + '</span>';
+        }
+    })
+    .catch(err => {
+        result.innerHTML = '<span class="text-red-600 font-medium">Error: ' + err.message + '</span>';
+    });
+}
+
+function saveAndEnqueueTask() {
+    const formData = gatherCreatorFormData();
+    const result = document.getElementById('save-result');
+    const filename = document.getElementById('save-filename').value;
+
+    if (!filename) {
+        result.innerHTML = '<span class="text-red-600 font-medium">Please enter a filename</span>';
+        return;
+    }
+
+    fetch('/api/save_task', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status !== 'ok') {
+            result.innerHTML = '<span class="text-red-600 font-medium">Error: ' + (data.message || 'Save failed') + '</span>';
+            return;
+        }
+        // Now enqueue
+        const amount = document.querySelector('input[name="amount"]')?.value || 10;
+        return fetch('/api/enqueue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_name: filename, amount: parseInt(amount) })
+        });
+    })
+    .then(r => r ? r.json() : null)
+    .then(data => {
+        if (data && data.status === 'ok') {
+            result.innerHTML = '<span class="text-green-600 font-medium"><i class="fa-solid fa-check mr-1"></i>Saved and added to queue</span>';
+            // Trigger queue refresh
+            htmx.trigger('#queue-panel', 'load');
+        } else if (data) {
+            result.innerHTML = '<span class="text-red-600 font-medium">Enqueue error: ' + (data.message || 'Failed') + '</span>';
+        }
+    })
+    .catch(err => {
+        result.innerHTML = '<span class="text-red-600 font-medium">Error: ' + err.message + '</span>';
+    });
+}
+</script>

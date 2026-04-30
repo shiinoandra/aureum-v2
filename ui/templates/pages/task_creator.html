@@ -21,18 +21,47 @@
     </div>
 </div>
 
-<!-- Create from Raid -->
+<!-- Create New Task -->
 <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
-    <h3 class="text-sm font-semibold text-slate-700 mb-3">Create from Raid</h3>
-    <p class="text-sm text-slate-500 mb-3">Pick a raid from the database to auto-generate a task JSON with pre-filled battle parameters.</p>
-    <div class="flex gap-3 mb-3">
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Create New Task</h3>
+    <p class="text-sm text-slate-500 mb-4">Pick a content type to generate a new task JSON with pre-filled battle parameters.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
+        <!-- Create from Raid -->
         <button onclick="openRaidPicker()"
-                class="h-12 px-5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2">
-            <i class="fa-solid fa-shield-halved"></i>
-            Browse Raids
+                class="group flex flex-col items-center gap-3 p-5 bg-white rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all">
+            <div class="w-12 h-12 rounded-full bg-blue-50 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-bolt text-xl text-blue-600"></i>
+            </div>
+            <div class="text-center">
+                <span class="text-sm font-semibold text-slate-900 block">From Raid</span>
+                <span class="text-xs text-slate-500">Browse raid grid</span>
+            </div>
+        </button>
+
+        <!-- Create from Event -->
+        <button onclick="alert('Event task creation will be implemented in a future update.')"
+                class="group flex flex-col items-center gap-3 p-5 bg-white rounded-xl border-2 border-slate-200 hover:border-amber-400 hover:shadow-lg transition-all">
+            <div class="w-12 h-12 rounded-full bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-flag text-xl text-amber-600"></i>
+            </div>
+            <div class="text-center">
+                <span class="text-sm font-semibold text-slate-900 block">From Event</span>
+                <span class="text-xs text-slate-500">Scan event URL</span>
+            </div>
+        </button>
+
+        <!-- Create from Quest -->
+        <button onclick="alert('Quest task creation will be implemented in a future update.')"
+                class="group flex flex-col items-center gap-3 p-5 bg-white rounded-xl border-2 border-slate-200 hover:border-emerald-400 hover:shadow-lg transition-all">
+            <div class="w-12 h-12 rounded-full bg-emerald-50 group-hover:bg-emerald-100 flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-scroll text-xl text-emerald-600"></i>
+            </div>
+            <div class="text-center">
+                <span class="text-sm font-semibold text-slate-900 block">From Quest</span>
+                <span class="text-xs text-slate-500">Browse quest list</span>
+            </div>
         </button>
     </div>
-    <div id="raid-picker-result" class="hidden"></div>
 </div>
 
 <!-- Creator Form (loaded dynamically) -->
@@ -40,32 +69,6 @@
     <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5 md:p-6">
         <h3 class="text-sm font-semibold text-slate-700 mb-4">Battle Parameters</h3>
         <p class="text-sm text-slate-400">Select a task above or create from a raid to load its parameters for editing.</p>
-    </div>
-</div>
-
-<!-- Event Generator -->
-<div class="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
-    <h3 class="text-sm font-semibold text-slate-700 mb-4">Event Generator</h3>
-    <div class="flex gap-3 mb-4">
-        <input type="text" id="eventUrl" name="event_url" placeholder="https://game.granbluefantasy.jp/#event/..."
-               class="flex-1 h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button hx-post="/api/discover_event"
-                hx-include="#eventUrl"
-                hx-target="#discoveredBattles"
-                class="h-12 px-5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition-colors">Scan</button>
-    </div>
-
-    <div id="discoveredBattles" class="hidden mb-4">
-        <!-- Populated by HTMX after scan -->
-    </div>
-
-    <div class="flex gap-3 items-end">
-        <div class="flex-1">
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Filename Prefix</label>
-            <input type="text" id="eventPrefix" name="prefix" placeholder="e.g. gw"
-                   class="w-full h-12 px-3 rounded-lg border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <button class="h-12 px-5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition-colors">Generate Selected</button>
     </div>
 </div>
 
@@ -94,7 +97,7 @@
                     ] %}
                     {% for cat_id, cat_label in categories %}
                     <button id="raid-cat-{{ cat_id }}" onclick="switchRaidCategory('{{ cat_id }}')"
-                            class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors {% if loop.first %}bg-blue-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-100 border border-slate-200{% endif %}">
+                            class="raid-cat-btn px-3 py-1.5 text-xs font-medium rounded-lg transition-colors {% if loop.first %}bg-blue-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-100 border border-slate-200{% endif %}">
                         {{ cat_label }}
                     </button>
                     {% endfor %}
@@ -120,8 +123,6 @@
 {% block extra_scripts %}
 <script>
 let currentRaidCategory = 'all';
-let selectedRaidId = null;
-let selectedRaidName = null;
 
 function openRaidPicker() {
     document.getElementById('raidPickerModal').classList.remove('hidden');
@@ -133,66 +134,45 @@ function closeRaidPicker() {
     document.body.style.overflow = '';
 }
 
-function switchRaidCategory(category) {
-    currentRaidCategory = category;
-    // Update tab styles
-    document.querySelectorAll('[id^="raid-cat-"]').forEach(btn => {
+function setActiveRaidCat(category) {
+    document.querySelectorAll('.raid-cat-btn').forEach(btn => {
         btn.classList.remove('bg-blue-600', 'text-white');
         btn.classList.add('bg-white', 'text-slate-600', 'border', 'border-slate-200');
     });
     const activeBtn = document.getElementById('raid-cat-' + category);
-    activeBtn.classList.remove('bg-white', 'text-slate-600', 'border', 'border-slate-200');
-    activeBtn.classList.add('bg-blue-600', 'text-white');
+    if (activeBtn) {
+        activeBtn.classList.remove('bg-white', 'text-slate-600', 'border', 'border-slate-200');
+        activeBtn.classList.add('bg-blue-600', 'text-white');
+    }
+}
 
-    // Load grid
+function switchRaidCategory(category) {
+    currentRaidCategory = category;
+    setActiveRaidCat(category);
     const grid = document.getElementById('raid-picker-grid');
     grid.innerHTML = '<div class="flex justify-center py-8"><i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>';
     htmx.ajax('GET', '/htmx/raid-grid/' + category, { target: '#raid-picker-grid' });
 }
 
 function selectContent(id, name, type) {
-    if (type === 'raid') {
-        closeRaidPicker();
-        selectedRaidId = id;
-        selectedRaidName = name;
+    if (type !== 'raid') return;
+    closeRaidPicker();
 
-        const result = document.getElementById('raid-picker-result');
-        result.classList.remove('hidden');
-        result.innerHTML = `
-            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-xs text-blue-600 font-semibold uppercase">Selected Raid</p>
-                        <p class="text-lg font-bold text-slate-900">${name}</p>
-                        <p class="text-xs text-slate-500">ID: ${id}</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <input type="number" id="raidTaskAmount" value="10" min="1"
-                               class="w-20 h-10 px-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-900 text-center">
-                        <button onclick="createTaskFromRaid('${id}', '${name}')"
-                                class="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors">
-                            Create Task
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-}
-
-function createTaskFromRaid(raidId, raidName) {
-    const amount = document.getElementById('raidTaskAmount').value || 10;
-    const filename = prompt('Enter filename for the new task:', `${raidId}.json`);
+    const defaultFilename = id + '.json';
+    const filename = prompt('Enter filename for the new task:', defaultFilename);
     if (!filename) return;
 
+    const cleanFilename = filename.endsWith('.json') ? filename : filename + '.json';
+
+    // Create the task with default params
     fetch('/api/save_task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            filename: filename,
+            filename: cleanFilename,
             task_type: 'raid',
-            raid_id: raidId,
-            amount: parseInt(amount),
+            raid_id: id,
+            amount: 10,
             turn: 1,
             refresh: true,
             until_finish: false,
@@ -208,9 +188,10 @@ function createTaskFromRaid(raidId, raidName) {
     .then(r => r.json())
     .then(data => {
         if (data.status === 'ok') {
-            alert('Created: ' + data.filename);
-            // Reload task list
-            location.reload();
+            // Auto-load the newly created task into the form
+            htmx.ajax('GET', '/htmx/creator-load?task_name=' + encodeURIComponent(cleanFilename), { target: '#creator-form' });
+            // Refresh the task selector dropdown
+            htmx.ajax('GET', '/', { target: 'body', select: 'body' });
         } else {
             alert(data.message || 'Failed to create task');
         }
