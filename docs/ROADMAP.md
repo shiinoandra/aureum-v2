@@ -45,10 +45,18 @@ This document tracks planned features, their priorities, and implementation stat
 |--------|------|-------|
 | `raid_id` | TEXT PK | GBF internal ID (e.g. "303141") |
 | `name` | TEXT NOT NULL | Display name |
+| `jp_name` | TEXT | Japanese name |
+| `level` | INTEGER | Raid level |
+| `ap_cost` | INTEGER | AP cost to host |
+| `ep_cost` | INTEGER | EP cost to host |
+| `host_url` | TEXT | URL to host the raid |
 | `difficulty` | TEXT | e.g. "Impossible", "Very Hard" |
 | `element` | TEXT | fire/wind/water/earth/light/dark |
-| `hp_estimate` | INTEGER | Optional rough HP |
+| `hp` | INTEGER | Optional rough HP |
 | `image_url` | TEXT | Optional |
+| `participant_num` | INTEGER | Max number of participants allowed |
+| `min_rank` | INTEGER | Minimum player rank to join |
+| `v2` | INTEGER | 1 if raid uses v2 battle system, 0 otherwise |
 | `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 
 **`task_history`** — Completed / stopped task log
