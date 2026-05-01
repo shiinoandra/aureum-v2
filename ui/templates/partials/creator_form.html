@@ -214,8 +214,9 @@ function saveAndEnqueueTask() {
     .then(data => {
         if (data && data.status === 'ok') {
             result.innerHTML = '<span class="text-green-600 font-medium"><i class="fa-solid fa-check mr-1"></i>Saved and added to queue</span>';
-            // Trigger queue refresh
-            htmx.trigger('#queue-panel', 'load');
+            // Trigger queue refresh only if queue panel exists (dashboard page)
+            const qp = document.getElementById('queue-panel');
+            if (qp) htmx.trigger(qp, 'load');
         } else if (data) {
             result.innerHTML = '<span class="text-red-600 font-medium">Enqueue error: ' + (data.message || 'Failed') + '</span>';
         }

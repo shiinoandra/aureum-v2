@@ -547,6 +547,232 @@ def action_refresh_raid_list(params, context: ActionContext):
         return ActionContext.RESULT_FAILED
 
 
+# ---------------------------------------------------------------------------
+# Raid Preset Selection
+# ---------------------------------------------------------------------------
+
+_DIFFICULTY_TAB_MAP = {
+    "standard": "type1",
+    "impossible": "type2",
+    "unlimited": "type4",
+}
+
+
+def _extract_raid_id_from_image_url(url: str) -> Optional[str]:
+    if not url:
+        return None
+    m = re.search(r"/lobby/(\d+)\.png", url)
+    if m:
+        return m.group(1)
+    m = re.search(r"/(\d+)\.png", url)
+    if m:
+        return m.group(1)
+    return None
+
+
+@ActionRegistry.register("ensure_raid_preset")
+def action_ensure_raid_preset(params, context: ActionContext):
+    """
+    Ensure the desired raid is active in one of the 4 preset slots on #quest/assist.
+
+    Flow:
+      1. Read the 4 preset slots.
+      2. If desired raid is already active -> success.
+      3. If desired raid is present but inactive -> click it.
+      4. If not present -> open Settings modal, clear a random slot,
+         navigate difficulty tab -> stage -> raid image -> OK, close modal.
+      5. Verify desired raid is now active.
+    """
+    nav = context.navigator
+    raid_id = context.raid_id
+    stage_id = context.task_config.stage_id
+    difficulty = context.task_config.difficulty
+
+    # Fallback: query DB if config fields are missing
+    if not raid_id or not stage_id or not difficulty:
+        from infra.database import get_raid_by_id
+        db_raid = get_raid_by_id(raid_id) if raid_id else None
+        if db_raid:
+            stage_id = stage_id or db_raid.get("stage_id")
+            difficulty = difficulty or db_raid.get("difficulty")
+
+    if not raid_id:
+        print("[!] ensure_raid_preset: no raid_id available")
+        return ActionContext.RESULT_FAILED
+
+    print(f"[i] Ensuring raid preset {raid_id} is active (difficulty={difficulty}, stage={stage_id})")
+
+    # --- Navigate to assist page ---
+    if "#quest/assist" not in nav.get_current_url():
+        nav.driver.get("https://game.granbluefantasy.jp/#quest/assist")
+    try:
+        nav.wait_for_element(By.CSS_SELECTOR, ".btn-search-switch", timeout=15)
+    except TimeoutException:
+        print("[!] Raid list page did not load")
+        return ActionContext.RESULT_FAILED
+    nav.wait(1.5, 2.5)
+
+    # --- Helper: read preset slots ---
+    def _read_slots():
+        slots = []
+        for i in range(1, 5):
+            try:
+                display = nav.driver.find_element(By.CSS_SELECTOR, f".prt-search-switch-display.slot{i}")
+                try:
+                    img = display.find_element(By.CSS_SELECTOR, ".img-quest")
+                    img_url = img.get_attribute("src") or ""
+                except NoSuchElementException:
+                    img_url = ""
+                cls = display.get_attribute("class") or ""
+                slots.append({
+                    "index": i,
+                    "display": display,
+                    "raid_id": _extract_raid_id_from_image_url(img_url),
+                    "is_active": "active" in cls and "on" in cls,
+                })
+            except NoSuchElementException:
+                slots.append({"index": i, "display": None, "raid_id": None, "is_active": False})
+        return slots
+
+    slots = _read_slots()
+    for s in slots:
+        status = "ACTIVE" if s["is_active"] else ""
+        print(f"    Slot {s['index']}: raid_id={s['raid_id']} {status}")
+
+    # Already active?
+    for s in slots:
+        if s["raid_id"] == raid_id and s["is_active"]:
+            print(f"[+] Raid {raid_id} is already active")
+            return ActionContext.RESULT_SUCCESS
+
+    # Present but inactive -> click it
+    for s in slots:
+        if s["raid_id"] == raid_id and s["display"] is not None:
+            print(f"[+] Raid {raid_id} found in slot {s['index']} (inactive). Clicking...")
+            try:
+                btn = s["display"].find_element(
+                    By.XPATH, "./ancestor::div[contains(@class, 'prt-search-switch-wrapper')]//div[contains(@class, 'btn-search-switch')]"
+                )
+                if "active" in (btn.get_attribute("class") or ""):
+                    return ActionContext.RESULT_SUCCESS
+                nav.click_element(btn)
+                nav.wait(1.5, 2.5)
+                # Verify
+                slots_after = _read_slots()
+                for sa in slots_after:
+                    if sa["raid_id"] == raid_id and sa["is_active"]:
+                        print(f"[+] Raid {raid_id} is now active")
+                        return ActionContext.RESULT_SUCCESS
+                print("[!] Clicked preset but raid did not become active")
+                return ActionContext.RESULT_FAILED
+            except Exception as e:
+                print(f"[!] Failed to click preset slot: {e}")
+                return ActionContext.RESULT_FAILED
+
+    # --- Not in any preset -> open Settings modal ---
+    print(f"[!] Raid {raid_id} not in presets. Opening Settings...")
+    try:
+        setting_btn = nav.driver.find_element(By.CSS_SELECTOR, ".btn-search-setting")
+        nav.click_element(setting_btn)
+        nav.wait(1.0, 1.5)
+        nav.wait_for_element(By.CSS_SELECTOR, ".pop-search-setting", timeout=10)
+        print("[+] Settings modal opened")
+    except Exception as e:
+        print(f"[!] Failed to open settings modal: {e}")
+        return ActionContext.RESULT_FAILED
+
+    # --- Remove a random preset ---
+    removed = False
+    for attempt in range(4):
+        target_slot = random.randint(1, 4)
+        try:
+            wrapper = nav.driver.find_element(By.CSS_SELECTOR, f".prt-search-slot-wrapper.slot{target_slot}")
+            # Check if slot is already empty
+            try:
+                wrapper.find_element(By.CSS_SELECTOR, ".txt-empty-slot")
+                print(f"[+] Slot {target_slot} is already empty")
+                slot_btn = wrapper.find_element(By.CSS_SELECTOR, ".btn-select-search-slot")
+                nav.click_element(slot_btn)
+                removed = True
+                break
+            except NoSuchElementException:
+                pass
+            # Release existing preset
+            release_btn = wrapper.find_element(By.CSS_SELECTOR, ".btn-release")
+            nav.click_element(release_btn)
+            print(f"[+] Released preset in slot {target_slot}")
+            nav.wait(1.0, 1.5)
+            removed = True
+            break
+        except Exception as e:
+            print(f"[!] Could not clear slot {target_slot}: {e}")
+            continue
+
+    if not removed:
+        print("[!] Failed to clear any preset slot")
+        return ActionContext.RESULT_FAILED
+
+    # --- Select appropriate raid in modal ---
+    tab_class = _DIFFICULTY_TAB_MAP.get((difficulty or "").lower())
+    if not tab_class:
+        print(f"[!] Unknown difficulty '{difficulty}' for preset modal")
+        return ActionContext.RESULT_FAILED
+
+    try:
+        # 1. Click difficulty tab
+        tab_btn = nav.wait_for_clickable(By.CSS_SELECTOR, f".btn-stage-type.{tab_class}", timeout=10)
+        nav.click_element(tab_btn)
+        nav.wait(0.5, 1.0)
+
+        # 2. Click stage
+        stage_btn = nav.wait_for_clickable(
+            By.CSS_SELECTOR, f'div[data-stage-id="{stage_id}"].btn-search-stage', timeout=10
+        )
+        nav.click_element(stage_btn)
+        nav.wait(0.5, 1.0)
+
+        # 3. Wait for raid popup
+        nav.wait_for_element(By.CSS_SELECTOR, ".pop-usual.pop-search-target-quest.pop-show", timeout=10)
+
+        # 4. Select raid by image keyword
+        raid_xpath = f"//div[contains(@class, 'btn-select-quest') and .//img[contains(@src, '{raid_id}')]]"
+        raid_btn = nav.wait_for_clickable(By.XPATH, raid_xpath, timeout=10)
+        nav.click_element(raid_btn)
+        nav.wait(0.5, 1.0)
+
+        # 5. Confirm
+        ok_btn = nav.wait_for_clickable(By.CSS_SELECTOR, ".prt-popup-footer .btn-usual-ok", timeout=10)
+        nav.click_element(ok_btn)
+        nav.wait(1.0, 1.5)
+        print(f"[+] Selected raid {raid_id} in modal")
+    except Exception as e:
+        print(f"[!] Failed to select raid in modal: {e}")
+        return ActionContext.RESULT_FAILED
+
+    # --- Close modal ---
+    try:
+        close_btn = nav.wait_for_clickable(By.CSS_SELECTOR, ".pop-search-setting .btn-usual-close", timeout=10)
+        nav.click_element(close_btn)
+        nav.wait(1.5, 2.5)
+        print("[+] Settings modal closed")
+    except Exception as e:
+        print(f"[!] Failed to close settings modal: {e}")
+        # Try Escape as fallback
+        from selenium.webdriver.common.keys import Keys
+        nav.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+        nav.wait(1.0, 1.5)
+
+    # --- Verify ---
+    slots = _read_slots()
+    for s in slots:
+        if s["raid_id"] == raid_id and s["is_active"]:
+            print(f"[+] SUCCESS: Raid {raid_id} is now active")
+            return ActionContext.RESULT_SUCCESS
+
+    print(f"[!] FAIL: Raid {raid_id} is still not active after configuration")
+    return ActionContext.RESULT_FAILED
+
+
 @ActionRegistry.register("clean_raid_queue")
 def action_clean_raid_queue(params, context: ActionContext):
     """Process and clear pending raids from unclaimed list."""

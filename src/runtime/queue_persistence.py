@@ -9,7 +9,8 @@ QUEUE_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "queue.jso
 
 
 def save_queue(task_queue: deque[Task], path: Optional[Path] = None) -> None:
-    """Serialize queue to JSON file."""
+    """Serialize queue to JSON file. Embed full task_config so each
+    queued instance is self-contained and survives edits to the on-disk JSON."""
     target = path or QUEUE_FILE
     target.parent.mkdir(parents=True, exist_ok=True)
     data = []
@@ -20,6 +21,8 @@ def save_queue(task_queue: deque[Task], path: Optional[Path] = None) -> None:
             "completed": task.completed,
             "not_found_count": task.not_found_count,
             "history_id": task.history_id,
+            "raid_id": task.raid_id,
+            "task_config": task.task_config.to_dict(),
         })
     with open(target, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -54,7 +57,14 @@ def load_queue(tasks_dir: Path, path: Optional[Path] = None) -> deque[Task]:
         except (json.JSONDecodeError, OSError):
             continue
 
-        task_config = TaskConfig.from_dict(task_def.get("task_config", {}))
+        # Prefer embedded task_config snapshot so edits to the on-disk JSON
+        # don't silently mutate already-queued tasks.
+        embedded_config = item.get("task_config")
+        if embedded_config:
+            task_config = TaskConfig.from_dict(embedded_config)
+        else:
+            task_config = TaskConfig.from_dict(task_def.get("task_config", {}))
+
         exit_condition = dict(task_def.get("exit_condition", {}))
         if exit_condition.get("type") == "raid_count":
             exit_condition["value"] = item.get("amount", 1)
@@ -70,6 +80,7 @@ def load_queue(tasks_dir: Path, path: Optional[Path] = None) -> deque[Task]:
             not_found_count=item.get("not_found_count", 0),
             source_file=source_file,
             history_id=item.get("history_id"),
+            raid_id=item.get("raid_id") or task_def.get("raid_id"),
         )
         result.append(task)
 

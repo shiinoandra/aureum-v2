@@ -1,67 +1,128 @@
 {% if queue_items %}
 <div class="space-y-2" id="queue-container">
     {% for item in queue_items %}
-    <div class="queue-item flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200
-                {% if is_running %}opacity-80{% else %}hover:border-blue-300{% endif %} transition-colors"
-         data-source="{{ item.source_file }}"
-         data-task-id="{{ item.task_id }}"
-         data-history-id="{{ item.history_id or '' }}">
-
-        <!-- Queue Number -->
-        <span class="text-sm font-bold text-slate-400 w-5 text-center select-none">{{ loop.index }}.</span>
-
-        <!-- Content -->
-        <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-                <span class="text-sm font-semibold text-slate-900 truncate">{{ item.task_type }}</span>
-                <span class="text-xs text-slate-400">{{ item.source_file }}</span>
-            </div>
-            <div class="flex items-center gap-2 mt-1">
-                {% if not is_running %}
-                <input type="number"
-                       class="queue-amount w-16 h-7 px-2 rounded border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                       value="{{ item.amount }}"
-                       min="1"
-                       data-index="{{ loop.index0 }}"
-                       onchange="updateQueueAmount(this)">
+    <div class="queue-item rounded-lg border border-slate-200 bg-white overflow-hidden transition-colors
+                {% if is_running %}opacity-80{% else %}hover:border-blue-300{% endif %}"
+         data-source="{{ item.source_file }}" data-task-id="{{ item.task_id }}">
+        <!-- Main Row -->
+        <div class="flex items-center gap-3 p-3 cursor-pointer" onclick="toggleQueueAccordion(this)">
+            <!-- Raid Image -->
+            <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {% if item.raid_image_url %}
+                <img src="{{ item.raid_image_url }}" alt="" class="w-full h-full object-cover">
                 {% else %}
-                <span class="text-xs text-slate-500 font-medium">x{{ item.amount }}</span>
+                <i class="fa-solid fa-bolt text-lg text-slate-500"></i>
                 {% endif %}
-                {% if item.completed > 0 %}
-                <span class="text-xs text-green-600">({{ item.completed }} done)</span>
-                {% endif %}
+            </div>
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold text-slate-900 truncate">
+                        {{ item.raid_name or item.source_file }}
+                        {% if item.raid_difficulty %}
+                        <span class="text-slate-500 font-normal">({{ item.raid_difficulty }})</span>
+                        {% endif %}
+                    </span>
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
+                        {% if item.task_type == 'raid' %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}
+                        {% if item.task_type == 'event' %}bg-amber-50 text-amber-700 border border-amber-200{% endif %}
+                        {% if item.task_type == 'quest' %}bg-emerald-50 text-emerald-700 border border-emerald-200{% endif %}
+                        {% if item.task_type not in ('raid','event','quest') %}bg-slate-100 text-slate-600 border border-slate-200{% endif %}">
+                        {{ item.task_type }}
+                    </span>
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                    {% if not is_running %}
+                    <input type="number"
+                           class="queue-amount w-14 h-6 px-1.5 rounded border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                           value="{{ item.amount }}"
+                           min="1"
+                           data-index="{{ loop.index0 }}"
+                           onclick="event.stopPropagation()"
+                           onchange="updateQueueAmount(this)">
+                    {% else %}
+                    <span class="text-xs text-slate-500 font-medium">x{{ item.amount }}</span>
+                    {% endif %}
+                    {% if item.completed > 0 %}
+                    <span class="text-xs text-green-600 font-medium">({{ item.completed }} done)</span>
+                    {% endif %}
+                    {% if item.raid_level %}
+                    <span class="text-xs text-slate-400">Lv.{{ item.raid_level }}</span>
+                    {% endif %}
+                    {% if item.raid_element %}
+                    <span class="text-xs text-slate-400">{{ item.raid_element }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex items-center gap-0.5" onclick="event.stopPropagation()">
+                <button hx-post="/api/reorder_queue"
+                        hx-vals='{"old_index": {{ loop.index0 }}, "new_index": {{ loop.index0 - 1 }}}'
+                        hx-target="#queue-panel"
+                        class="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors
+                               {% if is_running or loop.first %}opacity-30 cursor-not-allowed{% endif %}"
+                        {% if is_running or loop.first %}disabled{% endif %}
+                        title="Move up">
+                    <i class="fa-solid fa-chevron-up text-xs"></i>
+                </button>
+                <button hx-post="/api/reorder_queue"
+                        hx-vals='{"old_index": {{ loop.index0 }}, "new_index": {{ loop.index0 + 1 }}}'
+                        hx-target="#queue-panel"
+                        class="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors
+                               {% if is_running or loop.last %}opacity-30 cursor-not-allowed{% endif %}"
+                        {% if is_running or loop.last %}disabled{% endif %}
+                        title="Move down">
+                    <i class="fa-solid fa-chevron-down text-xs"></i>
+                </button>
+                <button hx-post="/api/remove_from_queue"
+                        hx-vals='{"index": {{ loop.index0 }}}'
+                        hx-target="#queue-panel"
+                        class="w-7 h-7 flex items-center justify-center rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors
+                               {% if is_running %}opacity-30 cursor-not-allowed{% endif %}"
+                        {% if is_running %}disabled{% endif %}
+                        title="Remove">
+                    <i class="fa-solid fa-trash-can text-xs"></i>
+                </button>
             </div>
         </div>
 
-        <!-- Actions (always visible, disabled when running) -->
-        <div class="flex items-center gap-0.5">
-            <button hx-post="/api/reorder_queue"
-                    hx-vals='{"old_index": {{ loop.index0 }}, "new_index": {{ loop.index0 - 1 }}}'
-                    hx-target="#queue-panel"
-                    class="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors
-                           {% if is_running or loop.first %}opacity-30 cursor-not-allowed{% endif %}"
-                    {% if is_running or loop.first %}disabled{% endif %}
-                    title="Move up">
-                <i class="fa-solid fa-chevron-up text-xs"></i>
-            </button>
-            <button hx-post="/api/reorder_queue"
-                    hx-vals='{"old_index": {{ loop.index0 }}, "new_index": {{ loop.index0 + 1 }}}'
-                    hx-target="#queue-panel"
-                    class="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors
-                           {% if is_running or loop.last %}opacity-30 cursor-not-allowed{% endif %}"
-                    {% if is_running or loop.last %}disabled{% endif %}
-                    title="Move down">
-                <i class="fa-solid fa-chevron-down text-xs"></i>
-            </button>
-            <button hx-post="/api/remove_from_queue"
-                    hx-vals='{"index": {{ loop.index0 }}}'
-                    hx-target="#queue-panel"
-                    class="w-7 h-7 flex items-center justify-center rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors
-                           {% if is_running %}opacity-30 cursor-not-allowed{% endif %}"
-                    {% if is_running %}disabled{% endif %}
-                    title="Remove">
-                <i class="fa-solid fa-trash-can text-xs"></i>
-            </button>
+        <!-- Accordion Preview -->
+        <div class="accordion-content hidden border-t border-slate-100 bg-slate-50 px-3 py-3">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div class="bg-white rounded border border-slate-200 px-2 py-1.5">
+                    <span class="text-slate-400">Turns</span>
+                    <span class="font-semibold text-slate-900 ml-1">{{ item.task_config.turn | default(1) }}</span>
+                </div>
+                <div class="bg-white rounded border border-slate-200 px-2 py-1.5">
+                    <span class="text-slate-400">Refresh</span>
+                    <span class="font-semibold text-slate-900 ml-1">{{ 'ON' if item.task_config.refresh else 'OFF' }}</span>
+                </div>
+                <div class="bg-white rounded border border-slate-200 px-2 py-1.5">
+                    <span class="text-slate-400">Until Finish</span>
+                    <span class="font-semibold text-slate-900 ml-1">{{ 'ON' if item.task_config.until_finish else 'OFF' }}</span>
+                </div>
+                <div class="bg-white rounded border border-slate-200 px-2 py-1.5">
+                    <span class="text-slate-400">HP Range</span>
+                    <span class="font-semibold text-slate-900 ml-1">{{ item.task_config.min_hp_threshold | default(60) }}-{{ item.task_config.max_hp_threshold | default(100) }}%</span>
+                </div>
+                <div class="bg-white rounded border border-slate-200 px-2 py-1.5">
+                    <span class="text-slate-400">Players</span>
+                    <span class="font-semibold text-slate-900 ml-1">{{ item.task_config.min_people | default(1) }}-{{ item.task_config.max_people | default(30) }}</span>
+                </div>
+                <div class="bg-white rounded border border-slate-200 px-2 py-1.5 col-span-2 sm:col-span-3">
+                    <span class="text-slate-400">Summons</span>
+                    <span class="font-semibold text-slate-900 ml-1 truncate">
+                        {% set summons = item.task_config.summon_priority | default([]) %}
+                        {% if summons %}
+                            {{ summons | map(attribute='name') | join(', ') }}
+                        {% else %}
+                            Auto
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
         </div>
     </div>
     {% endfor %}
@@ -76,6 +137,14 @@
 </div>
 
 <script>
+function toggleQueueAccordion(row) {
+    const item = row.closest('.queue-item');
+    const content = item.querySelector('.accordion-content');
+    if (content) {
+        content.classList.toggle('hidden');
+    }
+}
+
 function syncQueueOrder() {
     const container = document.getElementById('queue-container');
     const items = [];

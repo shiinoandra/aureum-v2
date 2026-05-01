@@ -57,6 +57,8 @@ This document tracks planned features, their priorities, and implementation stat
 | `participant_num` | INTEGER | Max number of participants allowed |
 | `min_rank` | INTEGER | Minimum player rank to join |
 | `v2` | INTEGER | 1 if raid uses v2 battle system, 0 otherwise |
+| `stage_id` | INTEGER | GBF stage ID for preset modal navigation |
+| `difficulty_rating` | INTEGER | GBF difficulty rating for preset modal navigation |
 | `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 
 **`task_history`** — Completed / stopped task log
@@ -70,7 +72,7 @@ This document tracks planned features, their priorities, and implementation stat
 | `end_time` | TIMESTAMP | |
 | `target_count` | INTEGER | Original exit condition value |
 | `completed_count` | INTEGER | Actual raids completed |
-| `status` | TEXT | "completed", "stopped", "failed", "paused" |
+| `status` | TEXT | "completed", "stopped", "failed", "running" |
 | `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 
 **`drop_log`** — Per-raid drop results
@@ -86,7 +88,7 @@ This document tracks planned features, their priorities, and implementation stat
 
 ---
 
-## P1: Queue Persistence & Pause/Resume
+## P1: Queue Persistence & Stop/Resume
 
 **Status:** 🟢 Implemented  
 **Files:** `src/runtime/queue_persistence.py`, `src/runtime/runtime_manager.py`, `ui/app.py`  
@@ -97,16 +99,34 @@ This document tracks planned features, their priorities, and implementation stat
 - Queue persisted to `data/queue.json` on every mutation (enqueue, dequeue, reorder, clear)
 - Queue auto-restored on `RuntimeManager` startup
 - `Task.source_file` field added to track which JSON file the task came from
-- `POST /api/stop` now preserves queue (use `POST /api/clear_queue` to explicitly clear)
-- `POST /api/pause` and `POST /api/resume` endpoints added
-- SSE and progress API include `is_paused` flag
-- Queue snapshot includes `completed`, `not_found_count`, and `source_file`
+- `POST /api/stop` preserves queue; `POST /api/clear_queue` explicitly clears
+- Each queued task embeds its full `task_config` snapshot so edits to disk don't silently mutate queued instances
+- Queue is mutable (reorder, remove, amount change) only when stopped
+- Queue snapshot includes `completed`, `not_found_count`, `source_file`, `history_id`, `raid_id`, and `task_config`
 
 ### Queue File Format
 ```json
 [
-  {"source_file": "raid.json", "amount": 10, "completed": 3, "not_found_count": 0},
-  {"source_file": "event.json", "amount": 5, "completed": 0, "not_found_count": 0}
+  {
+    "source_file": "raid.json",
+    "amount": 10,
+    "completed": 3,
+    "not_found_count": 0,
+    "history_id": 42,
+    "raid_id": "303141",
+    "task_config": {
+      "turn": 1,
+      "refresh": true,
+      "until_finish": false,
+      "trigger_skip": false,
+      "pre_fa": false,
+      "min_hp_threshold": 60,
+      "max_hp_threshold": 100,
+      "min_people": 1,
+      "max_people": 30,
+      "summon_priority": []
+    }
+  }
 ]
 ```
 
@@ -116,19 +136,20 @@ This document tracks planned features, their priorities, and implementation stat
 
 **Status:** 🟢 Implemented  
 **Files:** `ui/templates/partials/queue.html`, `ui/app.py`  
-**Rationale:** Builds on P1. User can edit queue while paused/stopped.
+**Rationale:** Builds on P1. User can edit queue while stopped.
 
 ### Completed
 
 1. **Queue mutation guards**
-   - `_queue_mutable()` helper checks `is_running` and `is_paused`
+   - `_queue_mutable()` helper checks `is_running` only
    - All mutation endpoints (`sync_queue`, `remove`, `reorder`, `clear`) return 409 if running
-   - Queue is editable when stopped or paused
+   - Queue is editable only when stopped
 
 2. **Full queue sync endpoint**
    - `POST /api/sync_queue` receives entire queue array
-   - Backend reconstructs Task objects from `source_file` references
-   - Persists to `data/queue.json` immediately
+   - Backend preserves existing `Task` objects (including their `task_config` snapshots) by `task_id`
+   - Reconstructs from disk only for brand-new queue items
+   - Persists to `data/queue.json` immediately with embedded `task_config`
    - Supports reordering + amount changes in one call
 
 3. **Drag-and-drop reordering**
@@ -141,11 +162,11 @@ This document tracks planned features, their priorities, and implementation stat
    - On change: triggers full queue sync
 
 5. **Visual states**
-   - **Editable** (stopped/paused): drag handles, amount inputs, remove buttons, clear queue button
+   - **Editable** (stopped): drag handles, amount inputs, remove buttons, clear queue button
    - **Read-only** (running): static numbers, amount labels, no controls, slightly dimmed
 
 6. **Clear queue button**
-   - Visible only when editable
+   - Visible only when stopped
    - Confirmation dialog before clearing
 
 ---
@@ -221,61 +242,69 @@ This document tracks planned features, their priorities, and implementation stat
 
 ### Still Needed
 
-1. **Task Creator full functionality**
-   - Event scanning results rendering with HTMX
-   - Generate/save task workflows
+1. **Task Creator event workflow**
+   - Event scanning results rendering with HTMX (API exists, UI integration pending)
 
 2. **Old `index.html` removal**
    - Keep as backup until HTMX version is fully tested in production
-
-3. **Summon Picker partial**
-   - For P5 feature
 
 ---
 
 ## P5: Summon Priority UI
 
-**Status:** 🔴 Not Started  
-**Rationale:** Visual summon selection with drag-and-drop ordering.
+**Status:** 🟢 Implemented  
+**Files:** `ui/templates/partials/summon_picker.html`, `ui/templates/partials/creator_form.html`, `ui/app.py`  
+**Rationale:** Visual summon selection with click-to-add ordering.
 
-### Scope
+### Completed
 
 1. **Summon list from SQLite**
    - Read `summons` table
-   - Display with icons (if available) and names
+   - Display with thumbnail icons (if available), name, level, element, series
 
-2. **Drag-and-drop priority queue**
-   - User drags summon cards into priority order
-   - Order is saved back to task JSON's `summon_priority` field
-   - Reuses mutable queue sync pattern (P2)
+2. **Click-to-add priority queue**
+   - User clicks summon cards to add to priority list
+   - Chips show in priority order with remove button
+   - Order is saved back to task JSON's `summon_priority` field via hidden JSON input
+   - Filter search for summon grid
 
-3. **Level selection**
-   - Each summon card allows selecting level tier (if applicable)
-   - e.g. "Titan" → dropdown: ["Any", "Lvl 100", "Lvl 200", "Lvl 250"]
+3. **Level display**
+   - Each summon card shows level tier from database
+   - Selected chips preserve level in `summon_priority`
 
 ---
 
 ## P6: Raid Picker & JSON-to-Raid Association
 
-**Status:** 🔴 Not Started  
+**Status:** 🟡 In Progress  
+**Files:** `ui/templates/partials/raid_grid.html`, `ui/templates/pages/task_creator.html`, `ui/templates/pages/dashboard.html`, `ui/app.py`, `src/task/task.py`, `src/runtime/queue_persistence.py`  
 **Rationale:** Natural association between raids and task configs.
 
-### Scope
+### Completed
 
 1. **Raid list from SQLite**
-   - Read `raids` table
-   - Display with icons, names, difficulties
+   - Read `raids` table with category filtering (All, Standard, Impossible, Unlimited, v2)
+   - Visual grid with thumbnail, name, difficulty badge, level, element
+   - Case-insensitive filtering for difficulty values
+   - Search by name/difficulty in modals
 
 2. **Raid → Task JSON mapping**
    - Task JSON contains `raid_id` field matching `raids.raid_id`
-   - Multiple JSONs can share same `raid_id` (different configs for same raid)
-   - UI shows available configs when a raid is selected
+   - `Task` dataclass carries `raid_id` through queue lifecycle
+   - Queue persistence saves/restores `raid_id`
+   - Queue display enriches with raid name, image, difficulty, level, element from DB
 
-3. **Task creation flow**
-   - User picks raid from visual picker
-   - System suggests existing JSONs for that raid
-   - User picks one or creates new (copies defaults)
-   - User edits parameters, saves
+3. **Task creation flow (Task Creator)**
+   - User picks raid from visual picker modal
+   - Auto-creates task JSON with `raid_id` and default battle parameters
+   - Auto-loads new task into creator form for editing
+   - Dynamic dropdown update without page reload
+
+### Still Needed
+
+1. **Dashboard content picker integration**
+   - Selecting a raid from dashboard modal should find/create task and enqueue it
+   - Currently shows stub alert (`addContentToQueue`)
 
 ---
 

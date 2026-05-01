@@ -38,7 +38,8 @@ class TaskManager:
         # Resume from previously saved progress if this task was stopped mid-run
         self.progress.raids_completed = task.completed
         self.executor = TaskExecutor(
-            navigator, global_config, task.task_config, self.progress
+            navigator, global_config, task.task_config, self.progress,
+            raid_id=task.raid_id,
         )
         self.logger = DropLogger()
         self._stop_requested = False

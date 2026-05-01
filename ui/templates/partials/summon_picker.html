@@ -37,21 +37,37 @@
                    class="w-32 h-7 px-2 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                    oninput="filterSummons(this.value)">
         </div>
-        <div id="summon-grid" class="p-2 max-h-48 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        <div id="summon-grid" class="p-2 max-h-56 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
             {% for summon in all_summons %}
             <button type="button"
-                    class="summon-option flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left text-sm"
+                    class="summon-option flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
                     data-name="{{ summon.name }}"
                     data-level="{{ summon.level | default('') }}"
                     data-element="{{ summon.element | default('') }}"
                     onclick="addSummon('{{ summon.name }}', '{{ summon.level | default('') }}')">
-                <span class="font-medium text-slate-900 truncate">{{ summon.name }}</span>
-                {% if summon.level %}
-                <span class="text-xs text-slate-500 whitespace-nowrap">{{ summon.level }}</span>
-                {% endif %}
-                {% if summon.element %}
-                <span class="text-xs text-slate-400 ml-auto">{{ summon.element }}</span>
-                {% endif %}
+                <!-- Thumbnail / Icon -->
+                <div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {% if summon.image_url %}
+                    <img src="{{ summon.image_url }}" alt="" class="w-full h-full object-cover">
+                    {% else %}
+                    <i class="fa-solid fa-star text-lg text-amber-400"></i>
+                    {% endif %}
+                </div>
+                <!-- Info -->
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold text-slate-900 truncate">{{ summon.name }}</div>
+                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                        {% if summon.level %}
+                        <span>{{ summon.level }}</span>
+                        {% endif %}
+                        {% if summon.element %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{{ summon.element }}</span>
+                        {% endif %}
+                        {% if summon.series %}
+                        <span class="truncate">{{ summon.series }}</span>
+                        {% endif %}
+                    </div>
+                </div>
             </button>
             {% endfor %}
         </div>
@@ -110,7 +126,8 @@ function filterSummons(query) {
     document.querySelectorAll('.summon-option').forEach(opt => {
         const name = opt.dataset.name.toLowerCase();
         const element = (opt.dataset.element || '').toLowerCase();
-        if (name.includes(q) || element.includes(q)) {
+        const level = (opt.dataset.level || '').toLowerCase();
+        if (name.includes(q) || element.includes(q) || level.includes(q)) {
             opt.classList.remove('hidden');
         } else {
             opt.classList.add('hidden');

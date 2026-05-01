@@ -123,11 +123,18 @@
 
                 <!-- Raid Category Tabs (shown only for raid content) -->
                 <div id="raid-category-tabs" class="hidden flex gap-1 px-6 py-3 border-b border-slate-200 bg-slate-50">
-                    <button onclick="switchRaidCategory('all')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white transition-colors">All</button>
-                    <button onclick="switchRaidCategory('standard')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Standard</button>
-                    <button onclick="switchRaidCategory('impossible')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Impossible</button>
-                    <button onclick="switchRaidCategory('unlimited')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Unlimited</button>
-                    <button onclick="switchRaidCategory('v2')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">v2</button>
+                    <button id="dash-raid-tab-all" onclick="switchRaidCategory('all')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white transition-colors">All</button>
+                    <button id="dash-raid-tab-standard" onclick="switchRaidCategory('standard')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Standard</button>
+                    <button id="dash-raid-tab-impossible" onclick="switchRaidCategory('impossible')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Impossible</button>
+                    <button id="dash-raid-tab-unlimited" onclick="switchRaidCategory('unlimited')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">Unlimited</button>
+                    <button id="dash-raid-tab-v2" onclick="switchRaidCategory('v2')" class="raid-tab-btn px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">v2</button>
+                </div>
+
+                <!-- Search (shown only for raid content) -->
+                <div id="raid-search-bar" class="hidden px-6 py-2 border-b border-slate-200 bg-slate-50">
+                    <input type="text" id="dashRaidSearchInput" placeholder="Search raids by name or difficulty..."
+                           class="w-full h-9 px-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                           oninput="filterRaidGrid(this.value, '#content-list-area')">
                 </div>
 
                 <!-- Content Area -->
@@ -171,6 +178,7 @@ function openContentModal(type) {
     const modal = document.getElementById('contentModal');
     const title = document.getElementById('content-modal-title');
     const raidTabs = document.getElementById('raid-category-tabs');
+    const raidSearch = document.getElementById('raid-search-bar');
 
     const titles = {
         'raid': 'Select Raid',
@@ -182,11 +190,13 @@ function openContentModal(type) {
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 
-    // Show/hide raid category tabs
+    // Show/hide raid category tabs and search
     if (type === 'raid') {
         raidTabs.classList.remove('hidden');
+        raidSearch.classList.remove('hidden');
     } else {
         raidTabs.classList.add('hidden');
+        raidSearch.classList.add('hidden');
     }
 
     // Load appropriate content
@@ -206,6 +216,11 @@ function setActiveRaidTab(category) {
         btn.classList.remove('bg-blue-600', 'text-white');
         btn.classList.add('bg-white', 'text-slate-600', 'border', 'border-slate-200');
     });
+    const activeBtn = document.getElementById('dash-raid-tab-' + category);
+    if (activeBtn) {
+        activeBtn.classList.remove('bg-white', 'text-slate-600', 'border', 'border-slate-200');
+        activeBtn.classList.add('bg-blue-600', 'text-white');
+    }
 }
 
 function closeContentModal() {
@@ -213,27 +228,126 @@ function closeContentModal() {
     document.body.style.overflow = '';
 }
 
-function selectContent(id, name, type) {
+function selectContent(id, name, type, stageId, difficulty) {
+    if (type !== 'raid') {
+        alert('Only raid content is supported from the dashboard picker right now.');
+        return;
+    }
     closeContentModal();
     const result = document.getElementById('content-picker-result');
     result.innerHTML = `
         <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-xs text-blue-600 font-semibold uppercase">Selected ${type.charAt(0).toUpperCase() + type.slice(1)}</p>
+                    <p class="text-xs text-blue-600 font-semibold uppercase">Selected Raid</p>
                     <p class="text-lg font-bold text-slate-900">${name}</p>
                     <p class="text-xs text-slate-500">ID: ${id}</p>
                 </div>
-                <button onclick="addContentToQueue('${id}', '${type}')" class="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors">
+                <button onclick="addContentToQueue('${id}', '${name}', '${stageId}', '${difficulty}')" class="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors">
                     Add to Queue
                 </button>
             </div>
+            <div id="raid-config-picker" class="mt-3 hidden"></div>
         </div>
     `;
 }
 
-function addContentToQueue(id, type) {
-    alert(`${type.charAt(0).toUpperCase() + type.slice(1)} ${id} selected. Task creation from content picker will be fully implemented with P6.`);
+function addContentToQueue(raidId, raidName, stageId, difficulty) {
+    const picker = document.getElementById('raid-config-picker');
+    const btn = document.querySelector('#content-picker-result button');
+    if (btn) btn.disabled = true;
+
+    fetch('/api/find_tasks_for_raid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raid_id: raidId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status !== 'ok') {
+            alert(data.message || 'Failed to look up tasks');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        const matches = data.matches || [];
+        if (matches.length === 0) {
+            // No existing task — auto-create with defaults
+            autoCreateAndEnqueue(raidId, raidName, stageId, difficulty);
+        } else if (matches.length === 1) {
+            // Exactly one match — enqueue directly
+            enqueueTaskFile(matches[0].filename, 10);
+        } else {
+            // Multiple configs — let user pick
+            picker.classList.remove('hidden');
+            let html = '<label class="block text-xs font-semibold text-slate-500 mb-1">Choose config</label><select id="raidConfigSelect" class="w-full h-10 px-2 rounded border border-slate-300 text-sm">';
+            matches.forEach(m => {
+                html += `<option value="${m.filename}">${m.filename} (${m.summon_priority_count} summons)</option>`;
+            });
+            html += '</select><button onclick="enqueueSelectedConfig()" class="mt-2 h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">Add to Queue</button>';
+            picker.innerHTML = html;
+            picker.dataset.raidName = raidName;
+            if (btn) btn.style.display = 'none';
+        }
+    });
+}
+
+function enqueueSelectedConfig() {
+    const select = document.getElementById('raidConfigSelect');
+    if (!select) return;
+    enqueueTaskFile(select.value, 10);
+}
+
+function enqueueTaskFile(filename, amount) {
+    fetch('/api/enqueue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_name: filename, amount: amount })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            const result = document.getElementById('content-picker-result');
+            result.innerHTML = '<span class="text-green-600 font-medium"><i class="fa-solid fa-check mr-1"></i>Added to queue</span>';
+            const qp = document.getElementById('queue-panel');
+            if (qp) htmx.trigger(qp, 'load');
+        } else {
+            alert(data.message || 'Enqueue failed');
+        }
+    });
+}
+
+function autoCreateAndEnqueue(raidId, raidName, stageId, difficulty) {
+    const filename = raidId + '.json';
+    fetch('/api/save_task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            filename: filename,
+            task_type: 'raid',
+            raid_id: raidId,
+            stage_id: stageId || null,
+            difficulty: difficulty || null,
+            amount: 10,
+            turn: 1,
+            refresh: true,
+            until_finish: false,
+            trigger_skip: false,
+            pre_fa: false,
+            min_hp_threshold: 60,
+            max_hp_threshold: 100,
+            min_people: 1,
+            max_people: 30,
+            summon_priority: [],
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            enqueueTaskFile(filename, 10);
+        } else {
+            alert(data.message || 'Failed to create task');
+        }
+    });
 }
 
 function loadContentPage(type, page) {
@@ -247,6 +361,21 @@ function switchRaidCategory(category) {
     const grid = document.getElementById('content-list-area');
     grid.innerHTML = '<div class="flex justify-center py-8"><i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>';
     htmx.ajax('GET', '/htmx/raid-grid/' + category, { target: '#content-list-area' });
+}
+
+function filterRaidGrid(query, containerSelector) {
+    const q = query.toLowerCase();
+    const container = document.querySelector(containerSelector);
+    if (!container) return;
+    container.querySelectorAll('[data-name]').forEach(card => {
+        const name = card.dataset.name || '';
+        const diff = card.dataset.difficulty || '';
+        if (name.includes(q) || diff.includes(q)) {
+            card.classList.remove('hidden');
+        } else {
+            card.classList.add('hidden');
+        }
+    });
 }
 
 // Close modal on Escape key

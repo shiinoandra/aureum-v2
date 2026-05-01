@@ -642,3 +642,14 @@ runtime.enqueue_task(Task(type="raid", task_config=TaskConfig(turn=3, refresh=Fa
 6. **Extensible logging**: DropLogger is a clean hook; future analytics just plug into TaskManager.
 7. **Failure isolation**: One bad task doesn't kill the queue (unless it's captcha).
 8. **No threading hell**: Single automation thread avoids Selenium race conditions entirely.
+
+---
+
+## Deferred Optimizations & Notes
+
+### E: N+1 DB Queries in `_enrich_queue_items`
+- **Location**: `ui/app.py` `_enrich_queue_items()`
+- **Issue**: One `SELECT * FROM raids WHERE raid_id = ?` per queue item
+- **Impact**: Negligible for < 20 items; may become noticeable with very large queues
+- **Fix when needed**: Replace with single `SELECT * FROM raids WHERE raid_id IN (...)` and build lookup dict
+- **Date deferred**: 2026-05-01

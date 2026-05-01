@@ -3,7 +3,10 @@
 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
     {% for raid in raids %}
     <div class="group relative bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer overflow-hidden"
-         onclick="selectContent('{{ raid.raid_id }}', '{{ raid.name }}', 'raid')">
+         data-name="{{ raid.name | lower }}"
+         data-difficulty="{{ (raid.difficulty or '') | lower }}"
+         data-stage-id="{{ raid.stage_id or '' }}"
+         onclick="selectContent('{{ raid.raid_id }}', '{{ raid.name }}', 'raid', '{{ raid.stage_id or '' }}', '{{ raid.difficulty or '' }}')">
         {% if raid.v2 %}
         <div class="absolute top-2 right-2 z-10">
             <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-600 text-white text-xs font-bold shadow-sm">

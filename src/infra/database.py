@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS raids (
     participant_num INTEGER,
     min_rank INTEGER,
     v2 INTEGER DEFAULT 0,
+    stage_id INTEGER,
+    difficulty_rating INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -81,15 +83,20 @@ INSERT OR IGNORE INTO db_version (version) VALUES (1);
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
     """Apply migrations to existing databases."""
-    # Migration 1: Add participant_num and min_rank to raids table
     cursor = conn.execute("PRAGMA table_info(raids)")
     columns = {row[1] for row in cursor.fetchall()}
+    # Migration 1: Add participant_num, min_rank, v2
     if "participant_num" not in columns:
         conn.execute("ALTER TABLE raids ADD COLUMN participant_num INTEGER")
     if "min_rank" not in columns:
         conn.execute("ALTER TABLE raids ADD COLUMN min_rank INTEGER")
     if "v2" not in columns:
         conn.execute("ALTER TABLE raids ADD COLUMN v2 INTEGER DEFAULT 0")
+    # Migration 2: Add stage_id and difficulty_rating for preset modal navigation
+    if "stage_id" not in columns:
+        conn.execute("ALTER TABLE raids ADD COLUMN stage_id INTEGER")
+    if "difficulty_rating" not in columns:
+        conn.execute("ALTER TABLE raids ADD COLUMN difficulty_rating INTEGER")
     conn.commit()
 
 
@@ -186,17 +193,20 @@ def insert_raid(
     participant_num: Optional[int] = None,
     min_rank: Optional[int] = None,
     v2: bool = False,
+    stage_id: Optional[int] = None,
+    difficulty_rating: Optional[int] = None,
 ) -> None:
     """Insert or replace a raid entry."""
     with get_connection() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO raids
                (raid_id, name, jp_name, level, ap_cost, ep_cost, host_url,
-                difficulty, element, hp, image_url, participant_num, min_rank, v2)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                difficulty, element, hp, image_url, participant_num, min_rank, v2,
+                stage_id, difficulty_rating)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (raid_id, name, jp_name, level, ap_cost, ep_cost, host_url,
              difficulty, element, hp, image_url, participant_num, min_rank,
-             1 if v2 else 0),
+             1 if v2 else 0, stage_id, difficulty_rating),
         )
 
 

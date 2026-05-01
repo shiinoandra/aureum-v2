@@ -151,6 +151,8 @@ def _get_queue_snapshot():
             "completed": task.completed,
             "not_found_count": task.not_found_count,
             "history_id": task.history_id,
+            "raid_id": task.raid_id,
+            "task_config": task.task_config.to_dict(),
         })
     return result
 
@@ -216,12 +218,29 @@ def htmx_status():
     )
 
 
+def _enrich_queue_items(queue_items):
+    """Add raid name/image from DB to queue items for display."""
+    from infra.database import get_raid_by_id
+    for item in queue_items:
+        raid_id = item.get("raid_id")
+        if raid_id:
+            raid = get_raid_by_id(raid_id)
+            if raid:
+                item["raid_name"] = raid.get("name")
+                item["raid_difficulty"] = raid.get("difficulty")
+                item["raid_element"] = raid.get("element")
+                item["raid_image_url"] = raid.get("image_url")
+                item["raid_level"] = raid.get("level")
+    return queue_items
+
+
 @app.route("/htmx/queue")
 def htmx_queue():
     """Return queue partial."""
     if not runtime:
         return render_template("partials/queue.html", queue_items=[], is_running=False)
     queue_items = _get_queue_snapshot()
+    queue_items = _enrich_queue_items(queue_items)
     snapshot = runtime.get_current_progress_snapshot()
     return render_template(
         "partials/queue.html",
@@ -339,11 +358,11 @@ def htmx_raid_grid(category):
         elif category == "v2":
             raids = [r for r in all_raids if r.get("v2")]
         elif category == "standard":
-            raids = [r for r in all_raids if r.get("difficulty") in ("Normal", "Hard", "Very Hard", "Extreme")]
+            raids = [r for r in all_raids if (r.get("difficulty") or "").lower() in ("standard", "normal", "hard", "very hard", "extreme")]
         elif category == "impossible":
-            raids = [r for r in all_raids if r.get("difficulty") == "Impossible" and not r.get("v2")]
+            raids = [r for r in all_raids if (r.get("difficulty") or "").lower() == "impossible" and not r.get("v2")]
         elif category == "unlimited":
-            raids = [r for r in all_raids if r.get("difficulty") in ("Impossible+", "Nightmare")]
+            raids = [r for r in all_raids if (r.get("difficulty") or "").lower() in ("unlimited", "impossible+", "nightmare")]
         else:
             raids = all_raids
         return render_template("partials/raid_grid.html", raids=raids, category=category)
@@ -458,11 +477,11 @@ def get_raids():
         elif category == "v2":
             raids = [r for r in all_raids if r.get("v2")]
         elif category == "standard":
-            raids = [r for r in all_raids if r.get("difficulty") in ("Normal", "Hard", "Very Hard", "Extreme")]
+            raids = [r for r in all_raids if (r.get("difficulty") or "").lower() in ("standard", "normal", "hard", "very hard", "extreme")]
         elif category == "impossible":
-            raids = [r for r in all_raids if r.get("difficulty") == "Impossible" and not r.get("v2")]
+            raids = [r for r in all_raids if (r.get("difficulty") or "").lower() == "impossible" and not r.get("v2")]
         elif category == "unlimited":
-            raids = [r for r in all_raids if r.get("difficulty") in ("Impossible+", "Nightmare")]
+            raids = [r for r in all_raids if (r.get("difficulty") or "").lower() in ("unlimited", "impossible+", "nightmare")]
         else:
             raids = all_raids
         return jsonify({"status": "ok", "raids": raids})
@@ -549,6 +568,7 @@ def enqueue():
         actions=task_def.get("actions", []),
         exit_condition=exit_condition,
         source_file=task_name,
+        raid_id=task_def.get("raid_id"),
     )
 
     runtime.enqueue_task(task)
@@ -607,7 +627,6 @@ def sync_queue():
         except (json.JSONDecodeError, OSError):
             continue
 
-        task_config = TaskConfig.from_dict(task_def.get("task_config", {}))
         exit_condition = dict(task_def.get("exit_condition", {}))
         if exit_condition.get("type") == "raid_count":
             exit_condition["value"] = item.get("amount", 1)
@@ -615,10 +634,21 @@ def sync_queue():
         task_id = item.get("task_id", str(uuid.uuid4())[:8])
         old_task = old_tasks.get(task_id)
 
-        # Preserve backend-only fields from existing task if present
-        completed = old_task.completed if old_task else 0
-        not_found_count = old_task.not_found_count if old_task else 0
-        history_id = old_task.history_id if old_task else None
+        # Preserve backend-only fields from existing task if present.
+        # Most importantly: task_config snapshot so edits to disk don't
+        # silently mutate already-queued tasks.
+        if old_task:
+            task_config = old_task.task_config
+            completed = old_task.completed
+            not_found_count = old_task.not_found_count
+            history_id = old_task.history_id
+            raid_id = old_task.raid_id
+        else:
+            task_config = TaskConfig.from_dict(task_def.get("task_config", {}))
+            completed = 0
+            not_found_count = 0
+            history_id = None
+            raid_id = task_def.get("raid_id")
 
         task = Task(
             task_id=task_id,
@@ -630,6 +660,7 @@ def sync_queue():
             not_found_count=not_found_count,
             source_file=source_file,
             history_id=history_id,
+            raid_id=raid_id,
         )
         new_queue.append(task)
 
@@ -639,6 +670,7 @@ def sync_queue():
 
     if request.headers.get("HX-Request"):
         queue_items = _get_queue_snapshot()
+        queue_items = _enrich_queue_items(queue_items)
         snapshot = runtime.get_current_progress_snapshot()
         return render_template("partials/queue.html", queue_items=queue_items, is_running=snapshot.get("is_running", False))
     return jsonify({"status": "ok", "count": len(new_queue)})
@@ -665,6 +697,7 @@ def remove_from_queue():
             runtime._persist_queue()
             if request.headers.get("HX-Request"):
                 queue_items = _get_queue_snapshot()
+                queue_items = _enrich_queue_items(queue_items)
                 snapshot = runtime.get_current_progress_snapshot()
                 return render_template("partials/queue.html", queue_items=queue_items, is_running=snapshot.get("is_running", False))
             return jsonify({"status": "ok"})
@@ -697,6 +730,7 @@ def reorder_queue():
             runtime._persist_queue()
             if request.headers.get("HX-Request"):
                 queue_items = _get_queue_snapshot()
+                queue_items = _enrich_queue_items(queue_items)
                 snapshot = runtime.get_current_progress_snapshot()
                 return render_template("partials/queue.html", queue_items=queue_items, is_running=snapshot.get("is_running", False))
             return jsonify({"status": "ok"})
@@ -774,6 +808,36 @@ def sse():
         for msg in announcer.listen():
             yield f"data: {msg}\n\n"
     return Response(stream(), mimetype="text/event-stream")
+
+
+# =============================================================================
+# Task Lookup by Raid ID
+# =============================================================================
+
+@app.route("/api/find_tasks_for_raid", methods=["POST"])
+def find_tasks_for_raid():
+    """Scan tasks/ directory for JSONs whose raid_id matches the given one."""
+    data = _get_request_data()
+    raid_id = data.get("raid_id")
+    if not raid_id:
+        return jsonify({"status": "error", "message": "raid_id required"}), 400
+
+    tasks_dir = _get_tasks_dir()
+    matches = []
+    for f in tasks_dir.glob("*.json"):
+        try:
+            with open(f, "r", encoding="utf-8") as fh:
+                task_def = json.load(fh)
+            if task_def.get("raid_id") == raid_id:
+                matches.append({
+                    "filename": f.name,
+                    "task_type": task_def.get("task_type", "raid"),
+                    "summon_priority_count": len(task_def.get("task_config", {}).get("summon_priority", [])),
+                })
+        except Exception:
+            continue
+
+    return jsonify({"status": "ok", "raid_id": raid_id, "matches": matches})
 
 
 # =============================================================================
@@ -865,6 +929,26 @@ def _parse_bool_value(value):
     return bool(value)
 
 
+def _build_default_raid_actions(has_raid_id: bool) -> list:
+    """Build default action chain for raid tasks."""
+    if has_raid_id:
+        return [
+            {"name": "refresh_raid_list", "params": {}, "transitions": {"success": "ensure_raid_preset", "failed": "refresh_raid_list"}},
+            {"name": "ensure_raid_preset", "params": {}, "transitions": {"success": "select_raid", "failed": "refresh_raid_list"}},
+            {"name": "select_raid", "params": {"filter": "prefer_Lv100"}, "transitions": {"success": "select_summon", "failed": "refresh_raid_list"}},
+            {"name": "select_summon", "params": {}, "transitions": {"success": "join_battle", "failed": "select_raid"}},
+            {"name": "join_battle", "params": {}, "transitions": {"success": "do_battle", "failed": "select_raid"}},
+            {"name": "do_battle", "params": {"mode": "full_auto"}, "transitions": {"success": "select_raid", "failed": "select_raid"}},
+        ]
+    return [
+        {"name": "refresh_raid_list", "params": {}, "transitions": {"success": "select_raid", "failed": "refresh_raid_list"}},
+        {"name": "select_raid", "params": {"filter": "prefer_Lv100"}, "transitions": {"success": "select_summon", "failed": "refresh_raid_list"}},
+        {"name": "select_summon", "params": {}, "transitions": {"success": "join_battle", "failed": "select_raid"}},
+        {"name": "join_battle", "params": {}, "transitions": {"success": "do_battle", "failed": "select_raid"}},
+        {"name": "do_battle", "params": {"mode": "full_auto"}, "transitions": {"success": "select_raid", "failed": "select_raid"}},
+    ]
+
+
 @app.route("/api/save_task", methods=["POST"])
 def save_task():
     """Save a task definition to tasks/ directory.
@@ -906,7 +990,20 @@ def save_task():
         "min_people": int(data.get("min_people", 1) or 1),
         "max_people": int(data.get("max_people", 30) or 30),
         "summon_priority": summon_priority,
+        "stage_id": data.get("stage_id"),
+        "difficulty": data.get("difficulty"),
     }
+
+    # Auto-populate stage_id and difficulty from DB if raid_id is provided
+    raid_id = data.get("raid_id")
+    if raid_id and (not task_config["stage_id"] or not task_config["difficulty"]):
+        from infra.database import get_raid_by_id
+        db_raid = get_raid_by_id(raid_id)
+        if db_raid:
+            if not task_config["stage_id"]:
+                task_config["stage_id"] = db_raid.get("stage_id")
+            if not task_config["difficulty"]:
+                task_config["difficulty"] = db_raid.get("difficulty")
 
     # Preserve existing actions if file already exists
     existing_actions = None
@@ -922,13 +1019,7 @@ def save_task():
         "task_type": data.get("task_type", "raid"),
         "raid_id": data.get("raid_id") or None,
         "task_config": task_config,
-        "actions": existing_actions or [
-            {"name": "refresh_raid_list", "params": {}, "transitions": {"success": "select_raid", "failed": "refresh_raid_list"}},
-            {"name": "select_raid", "params": {"filter": "prefer_Lv100"}, "transitions": {"success": "select_summon", "failed": "refresh_raid_list"}},
-            {"name": "select_summon", "params": {}, "transitions": {"success": "join_battle", "failed": "select_raid"}},
-            {"name": "join_battle", "params": {}, "transitions": {"success": "do_battle", "failed": "select_raid"}},
-            {"name": "do_battle", "params": {"mode": "full_auto"}, "transitions": {"success": "select_raid", "failed": "select_raid"}},
-        ],
+        "actions": existing_actions or _build_default_raid_actions(raid_id is not None),
         "exit_condition": {"type": "raid_count", "value": int(data.get("amount", 10) or 10)},
     }
 

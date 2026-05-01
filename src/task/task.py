@@ -15,6 +15,8 @@ class TaskConfig:
     min_people: int = 1
     max_people: int = 30
     summon_priority: List[dict] = field(default_factory=list)
+    stage_id: Optional[int] = None
+    difficulty: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "TaskConfig":
@@ -30,6 +32,8 @@ class TaskConfig:
             min_people=data.get("min_people", 1),
             max_people=data.get("max_people", 30),
             summon_priority=list(data.get("summon_priority", [])),
+            stage_id=data.get("stage_id"),
+            difficulty=data.get("difficulty"),
         )
 
     def to_dict(self) -> dict:
@@ -45,6 +49,8 @@ class TaskConfig:
             "min_people": self.min_people,
             "max_people": self.max_people,
             "summon_priority": list(self.summon_priority),
+            "stage_id": self.stage_id,
+            "difficulty": self.difficulty,
         }
 
 
@@ -60,3 +66,4 @@ class Task:
     not_found_count: int = 0  # Consecutive "not found" failures (for interchangeable switching)
     source_file: str = ""   # e.g. "raid.json" — filename in tasks/ directory
     history_id: Optional[int] = None  # SQLite task_history row ID (survives stop/resume)
+    raid_id: Optional[str] = None     # FK to raids(raid_id) for display/linking

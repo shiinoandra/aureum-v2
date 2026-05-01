@@ -77,12 +77,12 @@ The control panel uses **HTMX + Jinja2 + Tailwind CSS** with **Server-Sent Event
 
 
 ## need checking
-the done in json is not updated realtime
-reproduce case
+1. in the queue where it displays what job is being processed we have a small text that indicates how many ttask is done after it is stop and resumed with green font this done text in json is not updated realtime
+reproduce case:
 add 10 x event -> do for 3 times ->stop -->refresh browse->correct
 from refresh browser (now status is done:3 )->resume for 3 more steps (should be 6/10 now) ->stop--> change target from 10 to 12-->r resume it will start again from 3 like it read from the json
 
-task should have unique identifier -> in history tab a same task that is stopped and resumed is treated as differetn task
+2. maybetask should have unique identifier? -> in history tab a same task that is stopped and resumed is treated as differetn task
 reproduce example : add 10x event battle to queue -> do it for 3 times ->stop ->check history tab
 there will be entry with status stopped with target 10 and completed 3
 now start again the same task do it for 3 more times (now should be 6/10)->stop it-> check histroy tabn now it will add another entry that says 6 completed 10 target. it should update the first entry as it referes to same ttaask not add another entry

@@ -29,12 +29,12 @@ class TaskExecutor:
     Raises CaptchaDetectedException on captcha popup.
     """
 
-    def __init__(self, navigator, global_config, task_config, task_progress):
+    def __init__(self, navigator, global_config, task_config, task_progress, raid_id=None):
         self.navigator = navigator
         self.global_config = global_config
         self.task_config = task_config
         self.task_progress = task_progress
-        self.context = ActionContext(navigator, global_config, task_config, task_progress)
+        self.context = ActionContext(navigator, global_config, task_config, task_progress, raid_id=raid_id)
         self._stop_requested = False
 
     def execute_task_cycle(self, actions: list) -> str:

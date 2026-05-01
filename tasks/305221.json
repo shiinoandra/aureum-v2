@@ -1,0 +1,66 @@
+{
+  "task_type": "raid",
+  "raid_id": "305221",
+  "task_config": {
+    "turn": 1,
+    "refresh": true,
+    "until_finish": false,
+    "trigger_skip": false,
+    "pre_fa": false,
+    "min_hp_threshold": 60,
+    "max_hp_threshold": 100,
+    "min_people": 1,
+    "max_people": 30,
+    "summon_priority": []
+  },
+  "actions": [
+    {
+      "name": "refresh_raid_list",
+      "params": {},
+      "transitions": {
+        "success": "select_raid",
+        "failed": "refresh_raid_list"
+      }
+    },
+    {
+      "name": "select_raid",
+      "params": {
+        "filter": "prefer_Lv100"
+      },
+      "transitions": {
+        "success": "select_summon",
+        "failed": "refresh_raid_list"
+      }
+    },
+    {
+      "name": "select_summon",
+      "params": {},
+      "transitions": {
+        "success": "join_battle",
+        "failed": "select_raid"
+      }
+    },
+    {
+      "name": "join_battle",
+      "params": {},
+      "transitions": {
+        "success": "do_battle",
+        "failed": "select_raid"
+      }
+    },
+    {
+      "name": "do_battle",
+      "params": {
+        "mode": "full_auto"
+      },
+      "transitions": {
+        "success": "select_raid",
+        "failed": "select_raid"
+      }
+    }
+  ],
+  "exit_condition": {
+    "type": "raid_count",
+    "value": 10
+  }
+}
